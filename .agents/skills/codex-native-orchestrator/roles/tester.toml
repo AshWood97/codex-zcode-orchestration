@@ -2,7 +2,7 @@ name = "tester"
 description = "GPT-6.1 Sol verification subagent for focused tests, reproductions, regression checks, and requested test additions."
 
 model = "gpt-6.1-sol"
-model_reasoning_effort = "high"
+model_reasoning_effort = "max"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """

@@ -30,6 +30,8 @@ import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple
 
+from portable_process import attach_windows_job, close_windows_job, executable_argv, process_is_alive, stop_windows_tree
+
 
 SCHEMA_VERSION = 1
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -52,10 +54,10 @@ DEFAULT_ROLE_SPECS: Dict[str, Dict[str, Any]] = {
     "conductor": {"model": "gpt-6.1-sol", "reasoning_effort": "max", "read_only": True},
     "explorer": {"model": "gpt-6-luna", "reasoning_effort": "max", "read_only": True},
     "worker": {"model": "gpt-6-luna", "reasoning_effort": "max", "read_only": False},
-    "tester": {"model": "gpt-6.1-sol", "reasoning_effort": "high", "read_only": False},
-    "researcher": {"model": "gpt-6.1-sol", "reasoning_effort": "high", "read_only": True},
+    "tester": {"model": "gpt-6.1-sol", "reasoning_effort": "max", "read_only": False},
+    "researcher": {"model": "gpt-6.1-sol", "reasoning_effort": "max", "read_only": True},
     "reviewer": {"model": "gpt-6.1-sol", "reasoning_effort": "max", "read_only": True},
-    "guardian": {"model": "gpt-6-astra", "reasoning_effort": "medium", "read_only": True},
+    "guardian": {"model": "gpt-6-astra", "reasoning_effort": "xhigh", "read_only": True},
 }
 
 EVENT_TYPES = {
@@ -478,6 +480,9 @@ def normalize_plan(plan: Mapping[str, Any], manifest: Optional[Mapping[str, Any]
         if not isinstance(max_attempts, int) or isinstance(max_attempts, bool) or max_attempts < 1 or max_attempts > ceiling:
             raise ValidationError("task %s max_attempts must be from 1 to %d" % (task_id, ceiling))
         task = dict(raw)
+        task_prompt = raw.get("prompt", task_objective)
+        if not isinstance(task_prompt, str) or not task_prompt.strip():
+            raise ValidationError("task %s prompt must be a non-empty string" % task_id)
         task.update({
             "task_id": task_id,
             "id": task_id,
@@ -494,7 +499,7 @@ def normalize_plan(plan: Mapping[str, Any], manifest: Optional[Mapping[str, Any]
             "write_mode": "read-only" if read_only else "workspace-write",
             "timeout": float(timeout),
             "retry_policy": {"max_attempts": max_attempts},
-            "prompt": task_objective,
+            "prompt": task_prompt,
         })
         tasks.append(task)
     for task in tasks:
@@ -622,14 +627,14 @@ class FileLock:
                     if not same_host or not isinstance(existing_pid, int) or existing_pid <= 0:
                         raise LockError("lock is already held or malformed: %s" % self.path) from exc
                     try:
-                        os.kill(existing_pid, 0)
-                    except ProcessLookupError:
+                        alive = process_is_alive(existing_pid)
+                    except OSError as probe_exc:
+                        raise LockError("lock owner could not be safely inspected: %s" % self.path) from probe_exc
+                    if not alive:
                         self.path.unlink()
                         fsync_directory(self.path.parent)
                         if attempt == 0:
                             continue
-                    except PermissionError:
-                        pass
                 except ControllerError as read_exc:
                     raise LockError("lock is already held and cannot be verified: %s" % self.path) from read_exc
                 raise LockError("lock is already held: %s" % self.path) from exc
@@ -1093,7 +1098,14 @@ class RunStore:
     def __init__(self, codex_home: Path):
         # Keep the historical namespace so this package can read and resume
         # runs created by astra-orchestrator without moving durable state.
-        self.root = resolve_codex_home(codex_home) / "astra-orchestrator"
+        resolved_home = resolve_codex_home(codex_home)
+        self.root = resolved_home / "astra-orchestrator"
+        # Windows protects CODEX_HOME from sandboxed tools. A read-only child
+        # cannot use a checkout there as its working directory. Keep new
+        # default-home checkouts in Documents; private state stays in CODEX_HOME.
+        self.workspace_base = None
+        if os.name == "nt" and resolved_home == (Path.home() / ".codex").resolve():
+            self.workspace_base = Path.home() / "Documents" / "Codex" / "NativeOrchestrator" / "workspaces"
         self.runs = self.root / "runs"
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.runs.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -1104,6 +1116,18 @@ class RunStore:
         if not RUN_ID_RE.match(run_id):
             raise ValidationError("invalid run id")
         return self.runs / run_id
+
+    def worktrees_path(self, run_id: str) -> Path:
+        run_path = self.run_path(run_id)
+        marker = run_path / "windows-workspaces.json"
+        if not marker.is_file():
+            return run_path / "worktrees"  # Preserve historical run paths.
+        if self.workspace_base is None:
+            raise RepoSafetyError("Windows workspace root is unavailable for this run")
+        expected = (self.workspace_base / run_id).resolve()
+        if read_json(marker) != {"path": str(expected)}:
+            raise RepoSafetyError("Windows workspace root marker differs from the fixed path")
+        return expected
 
     def load(self, run_id: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         path = self.run_path(run_id)
@@ -1132,6 +1156,9 @@ class RunStore:
         (path / "inputs").mkdir(mode=0o700)
         (path / "evidence").mkdir(mode=0o700)
         (path / "worktrees").mkdir(mode=0o700)
+        if self.workspace_base is not None:
+            workspace = (self.workspace_base / value).resolve()
+            atomic_write_json(path / "windows-workspaces.json", {"path": str(workspace)}, mode=0o600)
         normalized = dict(plan)
         tasks = {}
         for task in normalized["tasks"]:
@@ -1337,6 +1364,8 @@ def codex_child_environment(environment: Mapping[str, str], platform: Optional[s
 
 def _stop_process_group(process: subprocess.Popen) -> None:
     """Terminate a timed-out CLI and any descendants it started."""
+    if stop_windows_tree(process):
+        return
     if os.name == "posix":
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(process.pid, signal.SIGTERM)
@@ -1470,13 +1499,16 @@ class CodexRunner:
                 "--disable", "hooks",
                 "--disable", "plugins",
             ])
-        command.append(prompt)
+        # Stdin avoids Windows' command-line length limit for task/diff packets.
+        command.append("-")
+        command = executable_argv(command)
         home_context = tempfile.TemporaryDirectory(prefix="astra-guardian-home-") if isolated else contextlib.nullcontext(None)
         cwd_context = tempfile.TemporaryDirectory(prefix="astra-guardian-cwd-") if isolated else contextlib.nullcontext(None)
         auth_material_copied = False
         with home_context as temporary_directory, cwd_context as temporary_cwd_directory:
             environment = dict(os.environ)
             effective_cwd = Path(str(temporary_cwd_directory)) if isolated else Path(cwd)
+            command[-1:-1] = ["--cd", str(effective_cwd)]
             if isolated:
                 temporary_home = Path(str(temporary_directory))
                 os.chmod(str(temporary_home), 0o700)
@@ -1526,15 +1558,23 @@ class CodexRunner:
                     os.close(stdout_fd)
                     raise
                 with os.fdopen(stdout_fd, "wb") as stdout_file, os.fdopen(stderr_fd, "wb") as stderr_file:
-                    process = subprocess.Popen(
-                        command,
-                        cwd=str(effective_cwd),
-                        stdin=subprocess.DEVNULL,
-                        stdout=stdout_file,
-                        stderr=stderr_file,
-                        env=environment,
-                        start_new_session=(os.name == "posix"),
-                    )
+                    prompt_file = tempfile.TemporaryFile()
+                    prompt_file.write(prompt.encode("utf-8"))
+                    prompt_file.seek(0)
+                    try:
+                        process = subprocess.Popen(
+                            command,
+                            cwd=str(effective_cwd),
+                            stdin=prompt_file,
+                            stdout=stdout_file,
+                            stderr=stderr_file,
+                            env=environment,
+                            start_new_session=(os.name == "posix"),
+                            creationflags=(subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0),
+                        )
+                    finally:
+                        prompt_file.close()
+                    attach_windows_job(process)
                     try:
                         while True:
                             elapsed = time.monotonic() - started
@@ -1567,6 +1607,7 @@ class CodexRunner:
                         process_group_cleaned = True
                         raise
                     finally:
+                        close_windows_job(process)
                         stdout_file.flush()
                         stderr_file.flush()
                         os.fsync(stdout_file.fileno())
@@ -2049,6 +2090,7 @@ def _task_input_packet(plan: Mapping[str, Any], state: Mapping[str, Any], task: 
         "task_id": task["task_id"],
         "role": task["role"],
         "objective": task["objective"],
+        "prompt": task.get("prompt", task["objective"]),
         "scope": task.get("scope", []),
         "non_goals": task.get("non_goals", []),
         "owned_paths": task.get("owned_paths", []),
@@ -2069,6 +2111,7 @@ def _task_input_packet(plan: Mapping[str, Any], state: Mapping[str, Any], task: 
             "Stay inside the supplied scope and do not delegate.",
             "Report requested runtime separately from observed runtime; use unknown for values that cannot be observed.",
             "Return the structured result required by the output schema.",
+            "Honor the task's explicit prompt, scope, and non-goals; the Conductor plan cannot expand those boundaries.",
         ],
         "result_contract": {
             "schema_version": SCHEMA_VERSION,
@@ -2086,7 +2129,7 @@ def _task_input_packet(plan: Mapping[str, Any], state: Mapping[str, Any], task: 
             "findings": [],
             "residual_risks": [],
             "follow_up_actions": [],
-            "requested": {"model": "requested model", "effort": "requested effort", "sandbox": "requested sandbox"},
+            "requested": {"model": DEFAULT_ROLE_SPECS[task["role"]]["model"], "effort": DEFAULT_ROLE_SPECS[task["role"]]["reasoning_effort"], "sandbox": "read-only" if task["read_only"] else "workspace-write"},
             "observed": {"model": "observed model or unknown", "effort": "observed effort or unknown", "sandbox": "observed sandbox or unknown"},
         },
     }
@@ -2099,6 +2142,12 @@ def _task_input_packet(plan: Mapping[str, Any], state: Mapping[str, Any], task: 
         ])
     else:
         packet["requirements"].append("Remain read-only and do not modify the checkout.")
+        if state.get("integration"):
+            packet["verification_context"] = {
+                "source_base_head": state["repo"]["head"],
+                "checkout_head": base_head,
+                "note": "Prior writer changes are already committed and integrated. A clean checkout is expected. Compare source_base_head to checkout_head for the delivered diff; do not expect uncommitted writer edits.",
+            }
     return packet
 
 
@@ -2497,7 +2546,7 @@ class Orchestrator:
             return state["integration"]
         verify_repo(self.repo, state["repo"], require_clean=True)
         run_id = state["run_id"]
-        path = self.store.run_path(run_id) / "worktrees" / "integration"
+        path = self.store.worktrees_path(run_id) / "integration"
         branch = "astra/%s/integration" % re.sub(r"[^A-Za-z0-9.-]", "-", run_id)[:48]
         create_worktree(self.repo, path, branch, state["repo"]["head"])
         state["integration"] = {
@@ -2528,7 +2577,7 @@ class Orchestrator:
                 re.sub(r"[^A-Za-z0-9.-]", "-", run_id)[:32],
                 re.sub(r"[^A-Za-z0-9.-]", "-", task_id)[:32],
             )
-            worktree = run_path / "worktrees" / task_id
+            worktree = self.store.worktrees_path(state["run_id"]) / task_id
             create_worktree(self.repo, worktree, branch, base_head)
             baseline_metadata = git_protected_snapshot(worktree)
             task_state["worktree"] = {
@@ -3050,7 +3099,7 @@ class Orchestrator:
                             baseline = worktree_info.get("baseline_metadata")
                             if not isinstance(baseline, Mapping) or git_protected_snapshot(path) != baseline or not worktree_snapshot(path)["clean"]:
                                 raise WriterUncertainty("prepared checkout changed before process submission")
-                            remove_isolated_checkout(path, run_path / "worktrees")
+                            remove_isolated_checkout(path, self.store.worktrees_path(run_id))
                             prepared_state["worktree"] = None
                         transition_task(self.store, state, prepared_id, "pending", "task_recovered", {"reason": "wave preparation failed before process submission"})
                     except (ControllerError, OSError) as cleanup_exc:
@@ -3274,7 +3323,7 @@ class Orchestrator:
                 if task_state["state"] == "ready":
                     if task_state["writes"]:
                         worktree_info = task_state.get("worktree")
-                        expected_path = self.store.run_path(run_id) / "worktrees" / task_id
+                        expected_path = self.store.worktrees_path(run_id) / task_id
                         if worktree_info:
                             path = Path(worktree_info["path"])
                             try:
@@ -3581,7 +3630,7 @@ class Orchestrator:
             journal = EventJournal(self.store.run_path(run_id) / "events.jsonl", run_id)
             journal.append("cleanup_started", {})
             candidates = []
-            allowed_root = self.store.run_path(run_id) / "worktrees"
+            allowed_root = self.store.worktrees_path(run_id)
             for task_id, task_state in state["tasks"].items():
                 worktree_info = task_state.get("worktree")
                 if not worktree_info:
@@ -4467,7 +4516,7 @@ def global_doctor(repo: Path, codex_home: Path, manifest: Mapping[str, Any]) -> 
     conflicts = []
     managed_keys = set(manifest["managed_config_keys"])
     for directory in (repo, *repo.parents):
-        if directory == Path.home():
+        if directory in {Path.home(), Path(os.path.expanduser("~"))}:
             continue
         local_skill = directory / MANIFEST_RELATIVE.parent / "SKILL.md"
         if local_skill.is_file() and local_skill.resolve() != (SKILL_DIR / "SKILL.md").resolve():

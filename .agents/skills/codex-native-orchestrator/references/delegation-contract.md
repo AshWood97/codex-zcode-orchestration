@@ -34,10 +34,10 @@ Guardian is the mandatory controller-managed final phase:
 | `conductor` | GPT-6.1 Sol / max | mandatory overall decomposition, route, integration, and delivery plan | no |
 | `explorer` | GPT-6 Luna / max | map repository paths, symbols, tests, and constraints | no |
 | `worker` | GPT-6 Luna / max | implement a bounded change | assigned paths only |
-| `tester` | GPT-6.1 Sol / high | reproduce and validate behavior | tests only when requested |
+| `tester` | GPT-6.1 Sol / max | reproduce and validate behavior | tests only when requested |
 | `reviewer` | GPT-6.1 Sol / max | independent material review | no |
-| `researcher` | GPT-6.1 Sol / high | verify current or versioned facts | no |
-| `guardian` | GPT-6 Astra / medium | automatic final controller gate after Reviewer | no |
+| `researcher` | GPT-6.1 Sol / max | verify current or versioned facts | no |
+| `guardian` | GPT-6 Astra / xhigh | automatic final controller gate after Reviewer | no |
 
 The host session uses the model and effort selected by the user or session;
 they are independent of the fixed Conductor assignment and must not be checked

@@ -17,6 +17,7 @@ from unittest import mock
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_harness.py"
+sys.path.insert(0, str(SCRIPT.parent))
 SPEC = importlib.util.spec_from_file_location("run_harness", SCRIPT)
 assert SPEC and SPEC.loader
 runner = importlib.util.module_from_spec(SPEC)
@@ -186,7 +187,7 @@ class BridgeRunnerTests(unittest.TestCase):
                 self.assertEqual(argv[0], "/tmp/cli")
                 self.assertIn("brief", argv)
                 if harness == "codex-cli":
-                    self.assertIn("features.multi_agent=false", argv)
+                    self.assertIn("agents.enabled=false", argv)
                 elif harness == "claude-code":
                     self.assertIn("--bare", argv)
                     self.assertIn("--tools", argv)
@@ -301,7 +302,12 @@ class BridgeRunnerTests(unittest.TestCase):
     def test_external_symlink_blocks_execution(self) -> None:
         outside = self.base / "outside"
         outside.mkdir()
-        (self.workspace / "owned").symlink_to(outside, target_is_directory=True)
+        try:
+            (self.workspace / "owned").symlink_to(outside, target_is_directory=True)
+        except OSError as exc:
+            if os.name == "nt" and exc.winerror == 1314:
+                self.skipTest("Windows account lacks symbolic-link creation privilege")
+            raise
         with self.assertRaisesRegex(runner.BridgeError, "symlink outside"):
             runner.execute(self._request(), self._environment())
 
@@ -361,7 +367,13 @@ class BridgeRunnerTests(unittest.TestCase):
                 self.returncode = -9
 
         fake_process = FakeProcess()
+        def stop_fake(process):
+            process.terminate()
+            process.wait(timeout=1)
+
         with mock.patch.object(runner, "inspect_cli", return_value={"claude_bare": False}), \
+             mock.patch.object(runner, "attach_windows_job"), \
+             mock.patch.object(runner, "stop_process", side_effect=stop_fake), \
              mock.patch.object(runner.subprocess, "Popen", return_value=fake_process):
             report = runner.execute(self._request(), self._environment())
         self.assertEqual(report["status"], "cancelled")
@@ -464,14 +476,20 @@ class BridgeRunnerTests(unittest.TestCase):
 
     def test_brief_must_be_a_regular_non_symlink_file(self) -> None:
         alias = self.base / "brief-link.md"
-        alias.symlink_to(self.brief)
+        try:
+            alias.symlink_to(self.brief)
+        except OSError as exc:
+            if os.name == "nt" and exc.winerror == 1314:
+                self.skipTest("Windows account lacks symbolic-link creation privilege")
+            raise
         with self.assertRaisesRegex(runner.BridgeError, "non-symlink"):
             runner.execute(self._request(brief=alias, preflight_only=True), self._environment())
 
     def test_config_must_be_private_and_never_accepts_secret_values_as_env_map(self) -> None:
         self.config_path.chmod(0o644)
-        with self.assertRaisesRegex(runner.BridgeError, "permissions"):
-            runner.load_config(self.config_path)
+        if os.name != "nt":
+            with self.assertRaisesRegex(runner.BridgeError, "permissions"):
+                runner.load_config(self.config_path)
         self.config["env_map"]["codex-cli"] = {"API_KEY": "literal-secret-value"}
         self._write_config()
         with self.assertRaisesRegex(runner.BridgeError, "environment variable names"):

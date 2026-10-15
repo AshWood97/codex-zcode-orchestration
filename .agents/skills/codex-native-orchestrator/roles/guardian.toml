@@ -2,7 +2,7 @@ name = "guardian"
 description = "Read-only GPT-6 Astra guardian for the automatic final gate after Reviewer; advisory role metadata for controller compatibility."
 
 model = "gpt-6-astra"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 
 developer_instructions = """

@@ -54,7 +54,7 @@ def write_home(root: Path, *, provider_id: str = PROVIDER_ID, base_url: str = "h
     provider_lines = [
         f'model = "{model}"',
         f'model_provider = "{provider_id}"',
-        f'model_catalog_json = "{catalog_path}"',
+        f'model_catalog_json = {json.dumps(str(catalog_path))}',
         "",
         f'[model_providers."{provider_id}"]',
         'name = "Test provider"',

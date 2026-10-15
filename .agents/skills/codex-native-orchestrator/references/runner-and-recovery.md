@@ -54,6 +54,13 @@ No additional node state is valid.
 
 ## Writers and integration
 
+On Windows with the default `~/.codex` home, new runs place isolated code
+checkouts under `~/Documents/Codex/NativeOrchestrator/workspaces/RUN_ID` so
+read-only Windows sandbox tools can enter them. Run state, private packets,
+and invocation logs remain under `CODEX_HOME/astra-orchestrator`. A validated
+per-run marker binds the checkout root; historical runs keep their original
+locations. The controller passes the working directory explicitly to each CLI.
+
 The source repository must be clean before a writer DAG starts. Every writer
 and the integration stage use an isolated, non-local Git checkout with
 private metadata. The checkout does not retain an `origin` remote and does

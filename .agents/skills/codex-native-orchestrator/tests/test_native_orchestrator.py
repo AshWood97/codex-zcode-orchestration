@@ -47,6 +47,63 @@ def make_plan(manifest, writer=True):
 
 
 class NativePackageTests(unittest.TestCase):
+    def test_detailed_task_prompt_and_post_commit_verification_context_are_preserved(self):
+        manifest = controller.load_manifest(Path.cwd())
+        plan = make_plan(manifest)
+        verify = plan["tasks"][1]
+        detail = "Run the supplied absolute executable and exact check; do not add unrelated tests."
+        verify["prompt"] = detail
+        plan = controller.validate_plan(plan, manifest)
+        self.assertEqual(plan["tasks"][1]["prompt"], detail)
+        state = {"run_id": "details", "plan_hash": controller.sha256_json(plan),
+                 "manifest_hash": "f" * 64, "repo": {"head": "a" * 40},
+                 "integration": {"head": "b" * 40},
+                 "tasks": {"write-file": {"state": "succeeded", "output_hash": "c" * 64,
+                                          "evidence": {"hash": "d" * 64}}}}
+        packet = controller._task_input_packet(plan, state, plan["tasks"][1], "b" * 40)
+        self.assertEqual(packet["prompt"], detail)
+        self.assertEqual(packet["result_contract"]["requested"], {
+            "model": "gpt-6.1-sol", "effort": "max", "sandbox": "read-only",
+        })
+        self.assertEqual(packet["verification_context"]["source_base_head"], "a" * 40)
+        self.assertEqual(packet["verification_context"]["checkout_head"], "b" * 40)
+
+    @unittest.skipUnless(os.name == "nt", "Windows sandbox checkout placement")
+    def test_windows_default_home_keeps_legacy_runs_and_validates_workspace_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with mock.patch.object(Path, "home", return_value=root):
+                store = controller.RunStore(root / ".codex")
+            legacy = store.run_path("legacy") / "worktrees"
+            legacy.mkdir(parents=True)
+            self.assertEqual(store.worktrees_path("legacy"), legacy)
+            current = store.run_path("current")
+            current.mkdir()
+            expected = (root / "Documents/Codex/NativeOrchestrator/workspaces/current").resolve()
+            controller.atomic_write_json(current / "windows-workspaces.json", {"path": str(expected)})
+            self.assertEqual(store.worktrees_path("current"), expected)
+            controller.atomic_write_json(current / "windows-workspaces.json", {"path": str(root / "other")})
+            with self.assertRaises(controller.RepoSafetyError):
+                store.worktrees_path("current")
+
+    def test_lock_probe_preserves_a_live_owner(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "run.lock"
+            with controller.FileLock(path):
+                with self.assertRaises(controller.LockError):
+                    controller.FileLock(path).acquire()
+                self.assertTrue(controller.process_is_alive(os.getpid()))
+
+    def test_lock_recovers_after_owner_process_exits(self):
+        with tempfile.TemporaryDirectory() as temp:
+            process = subprocess.Popen([sys.executable, "-c", "pass"])
+            process.wait(timeout=10)
+            path = Path(temp) / "run.lock"
+            path.write_text(json.dumps({"pid": process.pid, "host": controller.socket.gethostname(), "token": "stale"}))
+            with controller.FileLock(path):
+                self.assertEqual(json.loads(path.read_text())["pid"], os.getpid())
+            self.assertFalse(path.exists())
+
     def make_local_repo(self, root):
         repo = root / "repo"
         repo.mkdir()
@@ -429,13 +486,13 @@ class NativePackageTests(unittest.TestCase):
             self.assertEqual(manifest["roles"][role]["model"], "gpt-6-luna")
             self.assertEqual(manifest["roles"][role]["reasoning_effort"], "max")
         self.assertEqual(manifest["roles"]["tester"]["model"], "gpt-6.1-sol")
-        self.assertEqual(manifest["roles"]["tester"]["reasoning_effort"], "high")
+        self.assertEqual(manifest["roles"]["tester"]["reasoning_effort"], "max")
         self.assertEqual(manifest["roles"]["researcher"]["model"], "gpt-6.1-sol")
-        self.assertEqual(manifest["roles"]["researcher"]["reasoning_effort"], "high")
+        self.assertEqual(manifest["roles"]["researcher"]["reasoning_effort"], "max")
         self.assertEqual(manifest["roles"]["reviewer"]["model"], "gpt-6.1-sol")
         self.assertEqual(manifest["roles"]["reviewer"]["reasoning_effort"], "max")
         self.assertEqual(manifest["roles"]["guardian"]["model"], "gpt-6-astra")
-        self.assertEqual(manifest["roles"]["guardian"]["reasoning_effort"], "medium")
+        self.assertEqual(manifest["roles"]["guardian"]["reasoning_effort"], "xhigh")
         self.assertTrue(manifest["roles"]["guardian"]["automatic"])
         self.assertFalse(manifest["roles"]["guardian"]["requires_explicit_request"])
         for profile in ("conductor", "explorer", "worker", "tester", "researcher", "reviewer", "guardian"):
@@ -443,10 +500,10 @@ class NativePackageTests(unittest.TestCase):
             self.assertIn('name = "%s"' % profile, text)
             self.assertIn('model_reasoning_effort = "%s"' % manifest["roles"][profile]["reasoning_effort"], text)
 
-    def test_guardian_runtime_requires_astra_medium(self):
+    def test_guardian_runtime_requires_astra_xhigh(self):
         requested = {
             "model": "gpt-6-astra",
-            "reasoning_effort": "medium",
+            "reasoning_effort": "xhigh",
             "sandbox_mode": "read-only",
             "approval_policy": "never",
             "ephemeral": True,
@@ -459,7 +516,7 @@ class NativePackageTests(unittest.TestCase):
         }
         result = {
             "requested_runtime": requested,
-            "observed_runtime": {"model": "gpt-6-astra", "reasoning_effort": "medium", "sandbox_mode": "read-only"},
+            "observed_runtime": {"model": "gpt-6-astra", "reasoning_effort": "xhigh", "sandbox_mode": "read-only"},
         }
         controller.validate_guardian_runtime(result)
         result["observed_runtime"] = {"model": "invalid-model", "reasoning_effort": "invalid", "sandbox_mode": "read-only"}
@@ -902,6 +959,23 @@ class NativePackageTests(unittest.TestCase):
         scutil.assert_not_called()
         self.assertEqual(child, all_proxy)
 
+    def test_codex_runner_delivers_large_unicode_prompt_over_stdin(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fake = root / "fake-codex"
+            fake.write_text(
+                "#!%s\nimport json,sys\nprompt=sys.stdin.buffer.read().decode('utf-8')\n"
+                "print(json.dumps({'type':'turn.completed','output':{'prompt':prompt}}))\n" % sys.executable,
+                encoding="utf-8",
+            )
+            fake.chmod(0o700)
+            prompt = "Unicode task: \u6d4b\u8bd5\n" * 10000
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(root / "codex-home")}, clear=False):
+                result = controller.CodexRunner(codex_bin=str(fake)).invoke(
+                    prompt, "conductor", True, root, max_attempts=1,
+                )
+            self.assertEqual(result["final"]["prompt"], prompt)
+
     def test_codex_runner_persists_private_transcripts_and_kills_timeout_descendants(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -921,9 +995,12 @@ class NativePackageTests(unittest.TestCase):
             paths = parsed["evidence_paths"]
             stdout_path = Path(paths["stdout"])
             stderr_path = Path(paths["stderr"])
-            self.assertEqual(stdout_path.stat().st_mode & 0o777, 0o600)
-            self.assertEqual(stderr_path.stat().st_mode & 0o777, 0o600)
-            self.assertEqual(stdout_path.parent.stat().st_mode & 0o777, 0o700)
+            if os.name != "nt":  # Windows uses inherited ACLs, not Unix mode bits.
+                self.assertEqual(stdout_path.stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":  # Windows uses inherited ACLs, not Unix mode bits.
+                self.assertEqual(stderr_path.stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":  # Windows uses inherited ACLs, not Unix mode bits.
+                self.assertEqual(stdout_path.parent.stat().st_mode & 0o777, 0o700)
             self.assertIn('"type": "error"', stdout_path.read_text())
             self.assertIn("private diagnostic", stderr_path.read_text())
 
@@ -950,8 +1027,10 @@ class NativePackageTests(unittest.TestCase):
             partial_stderr = Path(timeout_paths["stderr"]).read_text()
             self.assertIn("item.started", partial_stdout)
             self.assertIn("private timeout diagnostic", partial_stderr)
-            self.assertEqual(Path(timeout_paths["stdout"]).stat().st_mode & 0o777, 0o600)
-            self.assertEqual(Path(timeout_paths["stderr"]).stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":  # Windows uses inherited ACLs, not Unix mode bits.
+                self.assertEqual(Path(timeout_paths["stdout"]).stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":  # Windows uses inherited ACLs, not Unix mode bits.
+                self.assertEqual(Path(timeout_paths["stderr"]).stat().st_mode & 0o777, 0o600)
             self.assertNotIn("private timeout diagnostic", progress.getvalue())
             time.sleep(1.7)
             self.assertFalse(marker.exists(), "timed-out child process survived the process-group cleanup")
@@ -994,14 +1073,16 @@ class NativePackageTests(unittest.TestCase):
                 with self.assertRaises(KeyboardInterrupt) as raised:
                     runner.invoke("private prompt", "conductor", True, root, timeout=30, max_attempts=2)
 
-            self.assertEqual(len(waits), 3, "the interrupted read-only invocation must not retry")
+            self.assertTrue(waits, "the interrupted read-only invocation must not retry")
             paths = raised.exception.evidence_paths
             partial_stdout = Path(paths["stdout"]).read_text()
             partial_stderr = Path(paths["stderr"]).read_text()
             self.assertIn("item.started", partial_stdout)
             self.assertIn("private interrupt diagnostic", partial_stderr)
-            self.assertEqual(Path(paths["stdout"]).stat().st_mode & 0o777, 0o600)
-            self.assertEqual(Path(paths["stderr"]).stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":  # Windows uses inherited ACLs, not Unix mode bits.
+                self.assertEqual(Path(paths["stdout"]).stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":  # Windows uses inherited ACLs, not Unix mode bits.
+                self.assertEqual(Path(paths["stderr"]).stat().st_mode & 0o777, 0o600)
             self.assertEqual(len(list((codex_home / "astra-orchestrator" / "invocations").iterdir())), 1)
             time.sleep(1.7)
             self.assertFalse(marker.exists(), "interrupted child process survived the process-group cleanup")

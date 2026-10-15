@@ -22,8 +22,10 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Iterable, Mapping
+
+from portable_process import attach_windows_job, executable_argv, stop_windows_tree
 
 try:
     import fcntl
@@ -194,7 +196,7 @@ def build_argv(
 
     if harness == "codex-cli":
         return [binary, "exec", "--json", "--cd", str(cwd), "--sandbox", mode,
-                "-c", "features.multi_agent=false", "--model", model, "--", prompt]
+                "-c", "agents.enabled=false", "--model", model, "--", prompt]
     if harness == "claude-code":
         permission = "plan" if mode == "read-only" else "acceptEdits"
         tools = "Read,Glob,Grep" if mode == "read-only" else "Read,Glob,Grep,Edit,Write,Bash"
@@ -277,7 +279,7 @@ def inspect_cli(
     for argv in commands[harness]:
         try:
             result = subprocess.run(
-                argv, env=safe_env, stdin=subprocess.DEVNULL,
+                executable_argv(argv), env=safe_env, stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15, check=False,
             )
         except (OSError, subprocess.SubprocessError) as exc:
@@ -326,7 +328,9 @@ def validate_owned_paths(values: Iterable[str]) -> tuple[str, ...]:
     paths = []
     for value in values:
         path = Path(value)
-        if path.is_absolute() or not value or any(part in {"..", ""} for part in Path(value).parts):
+        if (path.is_absolute() or PurePosixPath(value).is_absolute()
+                or PureWindowsPath(value).drive or PureWindowsPath(value).root
+                or not value or any(part in {"..", ""} for part in PurePosixPath(value.replace("\\", "/")).parts)):
             raise BridgeError("owned paths must be non-empty relative paths without '..'")
         normalized = path.as_posix().rstrip("/")
         if normalized in {"", "."}:
@@ -548,27 +552,7 @@ def _run_stream(pipe: Any, path: Path, redactor: Redactor, identity: EventIdenti
 
 def stop_process(process: subprocess.Popen[Any]) -> None:
     """Stop the complete child group, even when its leader already exited."""
-    if os.name == "nt":
-        if process.poll() is None:
-            try:
-                process.send_signal(signal.CTRL_BREAK_EVENT)
-                process.wait(timeout=TERMINATE_GRACE)
-            except (OSError, subprocess.TimeoutExpired, ValueError):
-                try:
-                    process.terminate()
-                    process.wait(timeout=TERMINATE_GRACE)
-                except (OSError, subprocess.TimeoutExpired):
-                    try:
-                        subprocess.run(
-                            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL, timeout=TERMINATE_GRACE, check=False,
-                        )
-                    except (OSError, subprocess.SubprocessError):
-                        try:
-                            process.kill()
-                        except OSError:
-                            pass
+    if stop_windows_tree(process):
         return
 
     def signal_group(sig: int) -> bool:
@@ -632,6 +616,7 @@ def workspace_lock(root: Path):
     lock_id = hashlib.sha256(str(lock_root).encode("utf-8")).hexdigest()
     lock_path = Path(tempfile.gettempdir()) / f"codex-harness-{lock_id}.lock"
     handle = lock_path.open("a+b")
+    acquired = False
     try:
         try:
             os.chmod(lock_path, 0o600)
@@ -643,12 +628,15 @@ def workspace_lock(root: Path):
             else:
                 handle.seek(0)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            acquired = True
         except (BlockingIOError, OSError):
             raise BridgeError("another bridge run is already active for this workspace") from None
         yield
     finally:
         try:
-            if fcntl is not None:
+            if not acquired:
+                pass
+            elif fcntl is not None:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
             else:
                 handle.seek(0)
@@ -814,7 +802,8 @@ def execute(request: Request, environ: Mapping[str, str] | None = None) -> dict[
         else:
             kwargs["start_new_session"] = True
         try:
-            process = subprocess.Popen(argv, **kwargs)
+            process = subprocess.Popen(executable_argv(argv), **kwargs)
+            attach_windows_job(process)
         except OSError as exc:
             report["uncertainties"].append(
                 f"harness process could not start ({exc.__class__.__name__})"

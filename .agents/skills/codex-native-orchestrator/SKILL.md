@@ -14,6 +14,8 @@ A new run requires either of these entrypoints:
 - **Manual:** The user selects **Codex Native Orchestration** in the skill/slash menu (typing `/codex` filters that menu), or sends a direct `$codex-native-orchestrator` invocation with a task. Questions, quotations, screenshots, document references, and requests to inspect or edit this skill are not invocations of its orchestration workflow.
 - **Ultra:** The latest trusted runtime/developer `<multi_agent_mode>` instruction states **"Proactive multi-agent delegation is active"**, and the current repository task materially benefits from independent exploration, implementation, testing, research, or review. This is the Ultra runtime bridge; simple questions and small localized changes stay in the host session.
 
+For the Ultra entrypoint, start automatically without asking the user to select this skill or type its name. Keep the host's selected Ultra mode; only the delegated roles use the fixed efforts below.
+
 Ordinary/Max task matching, full access, a global default effort, the word `ultra` in user or document text, available agent tools, and earlier skill use do not authorize automatic activation. A later runtime instruction returning to explicit-request-only mode revokes Ultra activation for new tasks. Unknown mode does not authorize automatic activation.
 
 Keep `policy.allow_implicit_invocation: false` in `agents/openai.yaml`. The lightweight [global activation instructions](references/activation.md) conditionally load this file; the skill must not be injected for ordinary task matching.
@@ -44,10 +46,10 @@ If cached named-role tool metadata is missing or stale, use a fresh generic nati
 | --- | --- | --- | --- | --- |
 | Conductor | `gpt-6.1-sol` | `max` | Read-only | Mandatory startup on every invocation |
 | Explorer, worker | `gpt-6-luna` | `max` | Role profile | Ordinary work |
-| Tester | `gpt-6.1-sol` | `high` | Role profile | Verification |
-| Researcher | `gpt-6.1-sol` | `high` | Read-only | Research |
+| Tester | `gpt-6.1-sol` | `max` | Role profile | Verification |
+| Researcher | `gpt-6.1-sol` | `max` | Read-only | Research |
 | Reviewer | `gpt-6.1-sol` | `max` | Read-only | Required final review |
-| Guardian | `gpt-6-astra` | `medium` | Controller-isolated | Automatic final gate |
+| Guardian | `gpt-6-astra` | `xhigh` | Controller-isolated | Automatic final gate |
 
 The host session is the current execution session, not a named role. Its model and effort remain whatever the user or session selected; the skill neither checks nor changes them. The fixed Conductor assignment is independent. Role TOMLs are installed profiles for `CODEX_HOME/agents`; they do not create agents. Use native agent tools to launch ordinary named roles and wait for required results. Existing children retain their original settings.
 

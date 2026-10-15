@@ -39,9 +39,9 @@ Native agents · External providers · Harness delegation
 | --- | --- | --- |
 | Conductor | `gpt-6.1-sol` | `max` |
 | Explorer、Worker | `gpt-6-luna` | `max` |
-| Tester、Researcher | `gpt-6.1-sol` | `high` |
+| Tester、Researcher | `gpt-6.1-sol` | `max` |
 | Reviewer | `gpt-6.1-sol` | `max` |
-| Guardian | `gpt-6-astra` | `medium` |
+| Guardian | `gpt-6-astra` | `xhigh` |
 
 Conductor 是每次调用的独立启动阶段；验证成功并完成 Reviewer 审查后，每个任务自动运行一次隔离的 Guardian 最终门禁。需要写入产物的测试走原生 Tester 派遣；持久运行器只接受只读 Tester 节点。模型或配置不符时停止派遣，不会自动替换角色。
 
@@ -52,6 +52,20 @@ python3 .agents/skills/codex-native-orchestrator/scripts/codex_native_orchestrat
 ```
 
 Native 的独立 Codex CLI 会沿用显式代理环境变量；在 macOS 上，缺少这些变量时自动读取已启用的系统 HTTP/HTTPS 代理。输出留档和超时、中断清理详见[恢复说明](.agents/skills/codex-native-orchestrator/references/runner-and-recovery.md)。
+
+#### Ultra 自动入口
+
+选择 Codex 的 **Ultra** 思考模式后，适合分工的复杂项目任务会自动进入这套编排，无需再手动选择技能。普通模式和 Max 仍通过技能菜单或 `$codex-native-orchestrator` 手动启动；简单 Ultra 问题仍由主会话处理。主会话保留用户选择的 Ultra，固定模型和思考深度仅用于各个子角色。
+
+安装技能和七个角色后，运行下面的命令，将带标记的入口规则合并到个人 `CODEX_HOME/AGENTS.md`。脚本保留其他说明，更新前备份，并使用实际安装路径；不指定 `--apply` 时只检查。
+
+```sh
+python /absolute/path/to/CODEX_HOME/skills/codex-native-orchestrator/scripts/install_activation.py --apply
+```
+
+启动新会话后生效。自动入口以当前运行时的主动委派指令为准，不以文档中的 `ultra` 字样或保存的默认设置为准。可用 `codex -c 'model_reasoning_effort="ultra"' debug prompt-input` 检查当前客户端发出的模式指令；该命令无需模型调用。
+
+Windows 默认安装的新任务会把隔离代码副本放在 `~/Documents/Codex/NativeOrchestrator/workspaces/RUN_ID`，以供只读沙箱访问；私有状态与日志仍位于 `CODEX_HOME/astra-orchestrator`。历史运行路径保持可读。
 
 ### 公开仓库与验证范围
 
@@ -99,9 +113,9 @@ Python 3.11 or newer is recommended; External preflight and tests require at lea
 | --- | --- | --- |
 | Conductor | `gpt-6.1-sol` | `max` |
 | Explorer, Worker | `gpt-6-luna` | `max` |
-| Tester, Researcher | `gpt-6.1-sol` | `high` |
+| Tester, Researcher | `gpt-6.1-sol` | `max` |
 | Reviewer | `gpt-6.1-sol` | `max` |
-| Guardian | `gpt-6-astra` | `medium` |
+| Guardian | `gpt-6-astra` | `xhigh` |
 
 Conductor is the independent startup phase for every invocation. After successful verification and Reviewer review, every task automatically runs one isolated Guardian final gate. Tests that write output use native Tester dispatch; persistent runner Tester nodes must be read-only. Configuration drift stops dispatch instead of substituting a role.
 
@@ -111,7 +125,9 @@ Place the seven `.agents/skills/codex-native-orchestrator/roles/*.toml` profiles
 
 Native orchestration keeps `allow_implicit_invocation: false`. Select **Codex Native Orchestration** from the skill/slash menu (`/codex` filters the list), or invoke `$codex-native-orchestrator` with a task, to start it manually. Ordinary and Max task matching do not start the workflow.
 
-For Ultra integration, merge the marked block from [activation instructions](.agents/skills/codex-native-orchestrator/references/activation.md) into your personal `CODEX_HOME/AGENTS.md`, preserving unrelated guidance. Only the latest trusted runtime/developer instruction announcing active proactive delegation authorizes automatic loading for complex repository work. Full access, saved effort defaults, screenshots, and earlier skill use are not signals. Simple Ultra tasks remain in the host session. Global guidance is loaded at session startup; start a new session after installation.
+After installing the skill and seven roles, run `python /absolute/path/to/CODEX_HOME/skills/codex-native-orchestrator/scripts/install_activation.py --apply`. It backs up personal `CODEX_HOME/AGENTS.md` and merges only the marked [activation block](.agents/skills/codex-native-orchestrator/references/activation.md), resolving the real installed skill path and preserving unrelated guidance. Omit `--apply` for a read-only check. Start a new session after installation.
+
+Select **Ultra** in Codex and send a suitable complex repository task normally: the entrypoint automatically loads this workflow, without another skill selection. The host retains the selected Ultra mode; fixed role models and efforts apply only to delegated roles. Only the latest trusted runtime/developer instruction announcing active proactive delegation authorizes this entrypoint. Full access, saved effort defaults, screenshots, and earlier skill use are not signals. Simple Ultra tasks remain in the host session. The current client's mode instructions can be inspected without a model call using `codex -c 'model_reasoning_effort="ultra"' debug prompt-input`.
 
 Both entrypoints use the same custom roles and controller flow, with one startup per run. Delegated children do not activate nested orchestration. Existing unfinished tasks resume their recorded run; independent tasks re-evaluate the entrypoints.
 
