@@ -1,0 +1,24 @@
+{
+  "package_version": "3.3.0",
+  "custom_roles": [
+    "code-reviewer",
+    "debugger",
+    "design-critic",
+    "docs-researcher",
+    "finding-validator",
+    "test-author",
+    "test-verifier"
+  ],
+  "built_in_roles": [
+    "Explore",
+    "general-purpose"
+  ],
+  "model_policy": {
+    "display_name": "Gemini 3.8 Flash",
+    "thoughtLevel": "high",
+    "model_id": "set using your ZCode provider-id/model-id"
+  },
+  "max_concurrency": 4,
+  "same_issue_debugger_after": 2,
+  "max_repair_waves": 5
+}

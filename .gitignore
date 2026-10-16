@@ -19,3 +19,8 @@ private-*.json
 **/private-briefs/
 .codex/config.toml
 .codex/agents/
+
+# Personal ZCode state and installer backups
+**/agents-state.json
+**/backups/
+.zcode/

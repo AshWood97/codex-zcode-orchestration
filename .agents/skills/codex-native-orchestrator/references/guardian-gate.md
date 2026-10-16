@@ -1,7 +1,7 @@
 # Automatic final Guardian gate
 
 Every completed task handled by this skill runs one logical Guardian final
-gate after successful verification and the Sol Reviewer pass. This is a fixed
+gate per exact evidence revision after successful verification and the GPT-6.1 Sol Reviewer pass. This is a fixed
 policy for native and persistent-runner work, including read-only and
 documentation tasks. No separate user request is required. A task means the
 whole user assignment, not each agent or DAG node.
@@ -13,7 +13,7 @@ New plans use `gate_mode=final`; omitted mode defaults to `final`, and `pre`
 or `none` is rejected. `hard_risk` remains an independent risk classification
 for authentication, permissions, irreversible migration, destructive changes,
 public contract changes, and financial or regulatory logic. It does not change
-the required final-gate timing. The Astra budget is one logical gate per task.
+the required final-gate timing. The Astra budget is one logical gate per evidence revision.
 
 ## Timing and invocation
 
@@ -67,14 +67,22 @@ writer node.
 The controller rechecks the final repository snapshot after Reviewer and after
 Guardian; changes during either check invalidate completion.
 
-Keep the same task ID and byte-equivalent receipt for resume or retry. A changed
-receipt after a gate starts cannot silently consume another gate. Before the
-gate starts, Reviewer findings may be fixed and the same task's evidence
-refreshed against the original baseline. `native-gate` records completed
-work and never applies repository changes. If the gate is unavailable or does
-not approve, only an explicit user waiver may use `--waiver REASON` with the
-same receipt. A direct native `guardian` spawn alone does not establish the
-required controller isolation or durable single-gate accounting.
+Keep the same task ID and byte-equivalent receipt for retrying an unchanged revision. After a valid revise/block, a meaningful repair and fresh evidence can start another revision under the same task, within five repair waves. A new receipt alone, an identical source tree, cycling to an already-reviewed tree, an approved/pending/unavailable gate, or a changed objective cannot buy a new verdict. Use an explicit user waiver only when actually authorized; record it as waived, never approved.
+
+For a repaired native candidate use `native-gate` again with the new committed tree and receipt. For a runner use `revise-run`. Add this `repair` object to the receipt:
+
+```json
+{
+  "reason": "Concrete change addressing the prior rejection",
+  "issue_id": "stable-id-for-the-same-problem",
+  "addressed_findings": ["finding identifier or precise text"],
+  "verification_head": "full repaired HEAD SHA"
+}
+```
+
+The receipt's test_evidence must contain successful checks for that HEAD. After two failed fixes of the same issue, also include `debugger_evidence` with `path` (relative to this run directory) and `sha256` for a root-cause report. The host must use the real debugger findings; a hash alone does not establish semantic quality. Test-author-owned acceptance changes require a documented test appeal and fresh independent review. Each revision archives old state, review, gate and diff; startup planning is reused.
+
+A direct native Guardian spawn cannot establish controller isolation or durable gate accounting.
 
 The authoritative gate is a controller-isolated read-only process
 using a structured output contract. The controller launches the guardian with
@@ -129,9 +137,4 @@ An unavailable Guardian gate cannot be replaced by Reviewer approval. Stop
 until the user gives an informed explicit waiver. Record the unavailable
 result and preserve its evidence.
 
-After a valid verdict, do not call Astra again automatically. A substantive
-post-gate scope change invalidates the reviewed decision, trust boundary,
-migration behavior, public contract, key invariant, or risk assumptions. For
-hard-risk work, pause and ask the user to authorize a second gate or grant an
-explicit human waiver. For other work, obtain a fresh Sol review and
-state that the earlier Astra conclusion was invalidated.
+After a valid verdict, do not rerun the same packet. A rejected candidate may use the bounded repair path above. An approved result binds that exact source/test/evidence version; later changes invalidate it and require a newly scoped run. Changing requirements, permissions, risk assumptions or ownership is replanning, not permission to relabel an old approval. An unavailable or pending gate retains its original retry/accounting rules.

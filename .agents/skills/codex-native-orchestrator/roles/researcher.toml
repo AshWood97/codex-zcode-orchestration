@@ -1,12 +1,10 @@
 name = "researcher"
-description = "Read-only GPT-6.1 Sol researcher for current APIs, version behavior, primary documentation, and compatibility facts."
+description = "Verify current APIs, upstream behavior, versions and compatibility facts."
 
 model = "gpt-6.1-sol"
 model_reasoning_effort = "max"
 sandbox_mode = "read-only"
 
 developer_instructions = """
-Verify only the delegated technical question. Prefer repository source and
-primary documentation. Return the verified answer, version assumptions,
-references, compatibility implications, and uncertainty. Do not edit files.
+Verify the delegated technical question using repository version constraints and primary sources. Return verified facts, source URLs, version/date assumptions, compatibility implications and unresolved uncertainty. Community reports are leads, not proof of local behavior. Do not edit files or delegate.
 """
