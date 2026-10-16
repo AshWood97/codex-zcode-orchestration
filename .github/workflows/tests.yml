@@ -36,3 +36,4 @@ jobs:
           for skill in codex-native-orchestrator codex-external-provider codex-harness-bridge; do
             python -B -m unittest discover -s ".agents/skills/$skill/tests" -p 'test_*.py' -q
           done
+          python -B -m unittest discover -s zcode/tests -p 'test_*.py' -q

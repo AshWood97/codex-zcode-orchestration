@@ -15,10 +15,9 @@ resolved.
 
 Each new plan uses `gate_mode=final` (also the omitted-field default) and a boolean
 `hard_risk`. The host session executes the agreed plan and is not a plan node;
-ordinary task nodes use only `explorer`, `worker`, `tester`, `researcher`, or
-`reviewer`. Conductor is a controller-managed startup phase, not a plan node.
+ordinary nodes may use any manifest role except `conductor` and `guardian`. Conductor is a controller-managed startup phase, not a plan node.
 Guardian remains a public named role for native compatibility, but the
-persistent runner reserves it for the single controller-owned `gate_mode`
+persistent runner reserves it for the revision-bound controller-owned `gate_mode`
 invocation.
 Each plan node declares `task_id`, `role`, `depends_on`, `owned_paths`,
 `prompt`, `read_only`, and `writes`. Normalized execution nodes additionally
@@ -29,11 +28,7 @@ Material writer plans include a `tester` node downstream of affected writers.
 Tester records concrete commands and results before the controller's ordinary
 integration review. A `final` Guardian gate additionally requires successful
 read-only Tester evidence downstream of every writer.
-Runner Tester nodes must use read-only checks. A `writes=true` Tester node is
-integrated as a delivery writer. For required tests that generate output,
-choose native dispatch so Tester evidence precedes Reviewer. If the user
-explicitly requires this runner, stop and report the unsupported verification
-path. The final Guardian gate remains required when using native dispatch.
+Tester and check_runner are read-only with respect to deliverables (`read_only=true`, `writes=false`). Normal tests use `verification_workspace=disposable`: a private clone with requested workspace-write permissions permits generated outputs; tracked files and protected Git metadata must remain unchanged. Nothing is integrated. `verification_workspace=read-only` and global `read_only=true` prohibit these writes. The test author is the separate writer for tests.
 
 Durable runs live below the manifest's `run_state_root` and contain the plan,
 state, a JSONL event journal, per-node structured inputs/results/evidence, and
@@ -90,7 +85,9 @@ destructive Git cleanup.
 
 The automatic `final` gate runs after successful verification and the GPT-6.1
 Sol Reviewer pass for every task, including runs without writers. One logical
-Astra gate is allowed per task. New plans cannot use `pre` or `none`; old run
+Astra gate is allowed per evidence revision. A bounded repair uses `revise-run`
+with a verified repair receipt, reruns Tester, Reviewer and Guardian, and
+archives the previous revision. It never restarts Conductor or a finished writer. New plans cannot use `pre` or `none`; old run
 records retain their original evidence and are stopped as stale after the
 manifest changes, rather than silently resumed under the new policy.
 
@@ -125,3 +122,15 @@ what ran and what remains.
 Token limits, when present, stop new scheduling at the limit and make a best
 effort to interrupt active nodes. The runner does not promise zero overspend
 under concurrency.
+
+## Repairing a rejected integration
+
+The host may repair the private integration checkout within existing ownership and commit the repaired tree. Never edit successful writer clones or the user's source checkout to bypass evidence. Supply a receipt with the same objective, successful local test evidence and the repair fields documented in guardian-gate.md, then run:
+
+```sh
+python3 scripts/codex_native_orchestrator.py --repo /absolute/repository revise-run /absolute/repair.json --run-id RUN_ID
+```
+
+The controller checks the prior rejection/test failure, original manifest/plan, clean source, private integration branch, ancestry and owned paths. It archives the old revision and reruns independent Tester and its read-only descendants before new review/gate. Uncertain writers, changed ownership or invalidated downstream writers require a new bounded plan. Five repair waves is the hard ceiling. `resume` alone never creates a new evidence revision.
+
+`mechanic` is a delivery writer and uses the existing ownership/commit broker. `check_runner` uses the disposable verification environment, retains ordered command evidence, and is rerun after a repair; it does not replace the mandatory Sol Tester node for writer acceptance. `scout` uses the ordinary read-only task path.

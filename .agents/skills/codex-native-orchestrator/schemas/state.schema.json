@@ -4,36 +4,108 @@
   "type": "object",
   "$defs": {
     "node_state": {
-      "enum": ["pending", "ready", "running", "needs_input", "succeeded", "failed", "blocked", "cancelled", "stale"]
+      "enum": [
+        "pending",
+        "ready",
+        "running",
+        "needs_input",
+        "succeeded",
+        "failed",
+        "blocked",
+        "cancelled",
+        "stale"
+      ]
     },
     "runner_role": {
-      "enum": ["explorer", "worker", "tester", "researcher", "reviewer"]
+      "enum": [
+        "explorer",
+        "researcher",
+        "worker",
+        "design_critic",
+        "test_author",
+        "tester",
+        "reviewer",
+        "finding_validator",
+        "debugger",
+        "scout",
+        "mechanic",
+        "check_runner"
+      ]
     }
   },
-  "required": ["schema_version", "run_id", "plan_id", "state", "tasks", "plan_hash"],
+  "required": [
+    "schema_version",
+    "run_id",
+    "plan_id",
+    "state",
+    "tasks",
+    "plan_hash"
+  ],
   "properties": {
-    "schema_version": {"const": 1},
-    "run_id": {"type": "string"},
-    "plan_id": {"type": "string"},
-    "state": {"enum": ["planned", "running", "needs_input", "completed", "failed", "cancelled", "applying", "applied", "cleaned"]},
-    "status": {"type": "string"},
-    "plan_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "schema_version": {
+      "const": 1
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "plan_id": {
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "planned",
+        "running",
+        "needs_input",
+        "completed",
+        "failed",
+        "cancelled",
+        "applying",
+        "applied",
+        "cleaned"
+      ]
+    },
+    "status": {
+      "type": "string"
+    },
+    "plan_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "tasks": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["task_id", "role", "state"],
+        "required": [
+          "task_id",
+          "role",
+          "state"
+        ],
         "properties": {
-          "task_id": {"type": "string"},
-          "role": {"$ref": "#/$defs/runner_role"},
-          "state": {"$ref": "#/$defs/node_state"},
-          "status": {"$ref": "#/$defs/node_state"}
+          "task_id": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/$defs/runner_role"
+          },
+          "state": {
+            "$ref": "#/$defs/node_state"
+          },
+          "status": {
+            "$ref": "#/$defs/node_state"
+          }
         },
         "additionalProperties": true
       }
     },
-    "gate": {"type": ["object", "null"]},
-    "repo": {"type": "object"}
+    "gate": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "repo": {
+      "type": "object"
+    }
   },
   "additionalProperties": true
 }

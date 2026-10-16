@@ -63,7 +63,7 @@ class NativePackageTests(unittest.TestCase):
         packet = controller._task_input_packet(plan, state, plan["tasks"][1], "b" * 40)
         self.assertEqual(packet["prompt"], detail)
         self.assertEqual(packet["result_contract"]["requested"], {
-            "model": "gpt-6.1-sol", "effort": "max", "sandbox": "read-only",
+            "model": "gpt-6.1-sol", "effort": "max", "sandbox": "workspace-write",
         })
         self.assertEqual(packet["verification_context"]["source_base_head"], "a" * 40)
         self.assertEqual(packet["verification_context"]["checkout_head"], "b" * 40)
@@ -117,7 +117,7 @@ class NativePackageTests(unittest.TestCase):
     def test_conductor_fixed_read_only_role_is_excluded_from_dag(self):
         manifest = controller.load_manifest(Path.cwd())
         self.assertEqual(set(manifest["roles"]), {
-            "conductor", "explorer", "worker", "tester", "researcher", "reviewer", "guardian",
+            "conductor", "explorer", "worker", "tester", "researcher", "reviewer", "guardian", "design_critic", "test_author", "finding_validator", "debugger", "scout", "mechanic", "check_runner",
         })
         self.assertEqual(manifest["roles"]["conductor"]["sandbox_mode"], "read-only")
         self.assertTrue(manifest["roles"]["conductor"]["automatic"])
@@ -233,7 +233,7 @@ class NativePackageTests(unittest.TestCase):
                 self.assertEqual(packet["conductor_plan"], planning_response()["final"])
                 result = dict(packet["result_contract"], outcome="needs_input", summary="Need scope clarification", commit_sha=None)
                 result["test_evidence"] = []
-                result["requested"] = {"model": "gpt-6-luna", "effort": "max", "sandbox": "read-only"}
+                result["requested"] = {"model": "gpt-6.1-sol", "effort": "max", "sandbox": "read-only"}
                 result["observed"] = {"model": "unknown", "effort": "unknown", "sandbox": "unknown"}
                 return {"final": result}
 
@@ -478,27 +478,19 @@ class NativePackageTests(unittest.TestCase):
         manifest = controller.load_manifest(Path.cwd())
         self.assertEqual(manifest["package_id"], "codex-native-orchestrator")
         self.assertNotIn("root", manifest["roles"])
-        self.assertEqual(manifest["roles"]["conductor"]["model"], "gpt-6.1-sol")
-        self.assertEqual(manifest["roles"]["conductor"]["reasoning_effort"], "max")
         self.assertNotIn("model", manifest["managed_config_keys"])
         self.assertNotIn("model_reasoning_effort", manifest["managed_config_keys"])
-        for role in ("explorer", "worker"):
-            self.assertEqual(manifest["roles"][role]["model"], "gpt-6-luna")
-            self.assertEqual(manifest["roles"][role]["reasoning_effort"], "max")
-        self.assertEqual(manifest["roles"]["tester"]["model"], "gpt-6.1-sol")
-        self.assertEqual(manifest["roles"]["tester"]["reasoning_effort"], "max")
-        self.assertEqual(manifest["roles"]["researcher"]["model"], "gpt-6.1-sol")
-        self.assertEqual(manifest["roles"]["researcher"]["reasoning_effort"], "max")
-        self.assertEqual(manifest["roles"]["reviewer"]["model"], "gpt-6.1-sol")
-        self.assertEqual(manifest["roles"]["reviewer"]["reasoning_effort"], "max")
-        self.assertEqual(manifest["roles"]["guardian"]["model"], "gpt-6-astra")
-        self.assertEqual(manifest["roles"]["guardian"]["reasoning_effort"], "xhigh")
+        sol = {"conductor", "explorer", "researcher", "worker", "test_author", "tester", "reviewer", "finding_validator"}
+        luna = {"scout", "mechanic", "check_runner"}
+        self.assertEqual(set(manifest["roles"]) - sol - luna, {"design_critic", "debugger", "guardian"})
+        for name, spec in manifest["roles"].items():
+            self.assertEqual(spec["model"], "gpt-6.1-sol" if name in sol else "gpt-6-luna" if name in luna else "gpt-6-astra")
+            self.assertEqual(spec["reasoning_effort"], "max" if name in sol | luna else "xhigh")
+            profile = controller._agent_file_spec(SCRIPT_DIR.parent / "roles" / (name + ".toml"))
+            self.assertEqual(profile["model"], spec["model"])
+            self.assertEqual(profile["model_reasoning_effort"], spec["reasoning_effort"])
         self.assertTrue(manifest["roles"]["guardian"]["automatic"])
         self.assertFalse(manifest["roles"]["guardian"]["requires_explicit_request"])
-        for profile in ("conductor", "explorer", "worker", "tester", "researcher", "reviewer", "guardian"):
-            text = (SCRIPT_DIR.parent / "roles" / (profile + ".toml")).read_text()
-            self.assertIn('name = "%s"' % profile, text)
-            self.assertIn('model_reasoning_effort = "%s"' % manifest["roles"][profile]["reasoning_effort"], text)
 
     def test_guardian_runtime_requires_astra_xhigh(self):
         requested = {
@@ -538,7 +530,7 @@ class NativePackageTests(unittest.TestCase):
             self.assertEqual(report["run_id"], run_id)
             self.assertEqual(report["status"], "planned")
             self.assertEqual(report["requested"][0]["role"], "explorer")
-            self.assertEqual(report["requested"][0]["model"], "gpt-6-luna")
+            self.assertEqual(report["requested"][0]["model"], "gpt-6.1-sol")
             self.assertEqual(report["observed"][0]["provider"], "unknown")
             self.assertIn("changed_paths", report)
             self.assertIn("checks", report)
@@ -602,7 +594,9 @@ class NativePackageTests(unittest.TestCase):
         self.assertIn(b'model = "gpt-6-sol"\n', patched)
         self.assertIn(b'model_reasoning_effort = "high"\n', patched)
         self.assertIn(b'enabled = true\n', patched)
-        self.assertNotIn(b'model = "gpt-6-astra"', patched)
+        self.assertIn(b'default_subagent_model = "gpt-6.1-sol"\n', patched)
+        self.assertIn(b'default_subagent_reasoning_effort = "max"\n', patched)
+        self.assertNotIn(b'model = "gpt-6-astra"', patched.split(b'[agents]')[0])
 
     def test_role_scanner_ignores_model_text_inside_multiline_instructions(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -639,7 +633,7 @@ class NativePackageTests(unittest.TestCase):
             codex_home = root / "codex-home"
             agents = codex_home / "agents"
             agents.mkdir(parents=True)
-            for role in ("conductor", "explorer", "worker", "tester", "researcher", "reviewer", "guardian"):
+            for role in controller.ROLE_NAMES:
                 (agents / (role + ".toml")).write_bytes((SCRIPT_DIR.parent / "roles" / (role + ".toml")).read_bytes())
             values = manifest["config_values"]
             config = 'model = "gpt-6-sol"\nmodel_reasoning_effort = "medium"\n[agents]\n'
@@ -666,7 +660,7 @@ class NativePackageTests(unittest.TestCase):
                 config_path.write_text((config + '\n').replace('model = "gpt-6-sol"', 'model = "gpt-6-luna"'))
                 orchestrator._require_installed_topology()
                 explorer_path = agents / "explorer.toml"
-                explorer_path.write_text(explorer_path.read_text().replace('model = "gpt-6-luna"', 'model = "gpt-6-sol"'))
+                explorer_path.write_text(explorer_path.read_text().replace('model = "gpt-6.1-sol"', 'model = "gpt-6-sol"'))
                 with self.assertRaisesRegex(controller.ValidationError, "roles"):
                     orchestrator._require_installed_topology()
 
@@ -792,7 +786,7 @@ class NativePackageTests(unittest.TestCase):
                 self.assertEqual(calls, ["conductor"] * 3 + ["reviewer", "guardian"])
                 receipt["result"] = "Different work"
                 receipt_path.write_text(json.dumps(receipt))
-                with self.assertRaisesRegex(controller.ControllerError, "completion changed"):
+                with self.assertRaisesRegex(controller.ControllerError, "new evidence revision"):
                     orchestrator.native_gate(receipt_path, "native-test")
                 receipt["base_head"] = "0" * 40
                 receipt_path.write_text(json.dumps(receipt))
@@ -868,7 +862,7 @@ class NativePackageTests(unittest.TestCase):
             "plan_id": "writable-test", "objective": "Verify behavior",
             "tasks": [{"task_id": "test", "role": "tester", "objective": "Run tests that write output", "owned_paths": ["tmp"], "read_only": False, "writes": True}],
         }
-        with self.assertRaisesRegex(controller.ValidationError, "use native dispatch"):
+        with self.assertRaisesRegex(controller.ValidationError, "verification_workspace=disposable"):
             controller.validate_plan(plan, manifest=manifest)
 
     def test_known_observed_model_mismatch_is_rejected(self):

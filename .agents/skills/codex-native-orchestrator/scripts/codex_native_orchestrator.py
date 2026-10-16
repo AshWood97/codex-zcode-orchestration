@@ -42,23 +42,36 @@ DEFAULT_CODEX_HOME = Path.home() / ".codex"
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 DEPLOYMENT_ID_RE = re.compile(r"^deployment-[0-9a-f]{16}$")
-ROLE_NAMES = {"conductor", "explorer", "worker", "tester", "researcher", "reviewer", "guardian"}
+ROLE_NAMES = {"conductor", "explorer", "worker", "tester", "researcher", "reviewer", "guardian", "design_critic", "test_author", "finding_validator", "debugger", "scout", "mechanic", "check_runner"}
 TASK_ROLE_NAMES = ROLE_NAMES
 RUNNER_TASK_ROLE_NAMES = TASK_ROLE_NAMES - {"conductor", "guardian"}
-READ_ONLY_ROLES = {"conductor", "explorer", "researcher", "reviewer", "guardian"}
-WRITER_ROLES = {"worker", "tester"}
+READ_ONLY_ROLES = {"conductor", "explorer", "researcher", "reviewer", "guardian", "design_critic", "finding_validator", "debugger", "scout"}
+WRITER_ROLES = {"worker", "test_author", "mechanic"}
+CHECK_ROLES = {"tester", "check_runner"}
+LUNA_ESCALATION = {"scout": "explorer", "mechanic": "worker", "check_runner": "tester"}
 GATE_MODES = {"none", "pre", "final"}
 MAX_CONCURRENCY = 4
 
+# The bundled manifest is the sole model/effort authority. Deployed profiles
+# are checked against it; a repository manifest cannot replace these values.
+_BUNDLED_MANIFEST = json.loads((SKILL_DIR / "codex-native-orchestrator.json").read_text(encoding="utf-8"))
+if set(_BUNDLED_MANIFEST.get("roles", {})) != ROLE_NAMES:
+    raise RuntimeError("bundled manifest has an incomplete role topology")
 DEFAULT_ROLE_SPECS: Dict[str, Dict[str, Any]] = {
-    "conductor": {"model": "gpt-6.1-sol", "reasoning_effort": "max", "read_only": True},
-    "explorer": {"model": "gpt-6-luna", "reasoning_effort": "max", "read_only": True},
-    "worker": {"model": "gpt-6-luna", "reasoning_effort": "max", "read_only": False},
-    "tester": {"model": "gpt-6.1-sol", "reasoning_effort": "max", "read_only": False},
-    "researcher": {"model": "gpt-6.1-sol", "reasoning_effort": "max", "read_only": True},
-    "reviewer": {"model": "gpt-6.1-sol", "reasoning_effort": "max", "read_only": True},
-    "guardian": {"model": "gpt-6-astra", "reasoning_effort": "xhigh", "read_only": True},
+    name: dict(spec, read_only=name in READ_ONLY_ROLES)
+    for name, spec in _BUNDLED_MANIFEST["roles"].items()
 }
+MAX_REPAIR_WAVES = 5
+
+
+def role_instructions(role: str) -> str:
+    if role not in ROLE_NAMES:
+        raise ValueError("unknown role")
+    content = (SKILL_DIR / "roles" / (role + ".toml")).read_text(encoding="utf-8")
+    match = re.search(r'(?ms)^developer_instructions = """\n(.*?)\n"""\s*$', content)
+    if not match or not match.group(1).strip():
+        raise ValueError("missing role instructions: " + role)
+    return match.group(1)
 
 EVENT_TYPES = {
     "conductor_started",
@@ -84,6 +97,7 @@ EVENT_TYPES = {
     "gate_started",
     "gate_completed",
     "gate_unavailable",
+    "evidence_revision",
     "apply_started",
     "apply_task_succeeded",
     "apply_failed",
@@ -352,6 +366,13 @@ def _normalize_manifest(
     result["roles"] = json.loads(json.dumps(roles))
     result["max_concurrency"] = max_concurrency
     result["manifest_path"] = str(path)
+    # Prompt/controller changes invalidate evidence too, not just model edits.
+    package_paths = [SKILL_DIR / "SKILL.md"]
+    for directory in ("roles", "references", "schemas", "scripts"):
+        package_paths.extend(p for p in (SKILL_DIR / directory).rglob("*")
+                             if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc")
+    result["package_fingerprint"] = sha256_json({str(p.relative_to(SKILL_DIR)): sha256_file(p)
+                                               for p in sorted(package_paths)})
     return result
 
 
@@ -434,7 +455,7 @@ def normalize_plan(plan: Mapping[str, Any], manifest: Optional[Mapping[str, Any]
         if not isinstance(deps, list) or any(not isinstance(dep, str) for dep in deps):
             raise ValidationError("task %s dependencies must be an array of ids" % task_id)
         owned = normalize_owned_paths(raw.get("owned_paths", raw.get("ownedPaths", [])))
-        read_only_default = role in READ_ONLY_ROLES or role == "tester"
+        read_only_default = role in READ_ONLY_ROLES or role in CHECK_ROLES
         raw_read_only = raw.get("read_only", raw.get("readonly", read_only_default))
         raw_writes = raw.get("writes", not raw_read_only)
         if not isinstance(raw_read_only, bool):
@@ -445,8 +466,15 @@ def normalize_plan(plan: Mapping[str, Any], manifest: Optional[Mapping[str, Any]
         writes = False if global_read_only else raw_writes
         if role in READ_ONLY_ROLES and (not read_only or writes):
             raise ValidationError("task %s role %s is read-only and cannot request writes" % (task_id, role))
-        if role == "tester" and (not read_only or writes):
-            raise ValidationError("task %s tester must be read-only in the persistent runner; use native dispatch for writable tests" % task_id)
+        if role in CHECK_ROLES and (not read_only or writes):
+            raise ValidationError("task %s verification role must be read-only for deliverables; use verification_workspace=disposable for generated outputs" % task_id)
+        verification_workspace = raw.get("verification_workspace", "disposable" if role in CHECK_ROLES and not global_read_only else "read-only")
+        if verification_workspace not in {"read-only", "disposable"}:
+            raise ValidationError("invalid verification_workspace for task %s" % task_id)
+        if verification_workspace == "disposable" and (role not in CHECK_ROLES or global_read_only):
+            raise ValidationError("disposable verification requires tester/check_runner and cannot exceed the global read-only ceiling")
+        if any(key in raw for key in ("candidate_id", "candidate_group")):
+            raise ValidationError("alternative candidates must use separate native checkouts, never the integrating DAG")
         if read_only and writes:
             raise ValidationError("task %s cannot be both read_only and writes" % task_id)
         if not read_only and not writes:
@@ -466,6 +494,16 @@ def normalize_plan(plan: Mapping[str, Any], manifest: Optional[Mapping[str, Any]
             if any(not isinstance(value, str) or not value.strip() for value in values):
                 raise ValidationError("task %s %s must contain only non-empty strings" % (task_id, field))
             contract_lists[field] = values
+        execution_contract = {}
+        for field in ("change_recipe", "check_commands"):
+            values = raw.get(field, [])
+            if not isinstance(values, list) or any(not isinstance(value, str) or not value.strip() for value in values):
+                raise ValidationError("task %s %s must be an array of non-empty strings" % (task_id, field))
+            execution_contract[field] = list(values)
+        if role == "mechanic" and (not execution_contract["change_recipe"] or not contract_lists["acceptance_criteria"]):
+            raise ValidationError("mechanic requires an explicit change_recipe and acceptance_criteria")
+        if role == "check_runner" and not execution_contract["check_commands"]:
+            raise ValidationError("check_runner requires predetermined check_commands")
         timeout_default = 1800 if read_only else 3600
         if manifest and isinstance(manifest.get("timeouts"), Mapping):
             timeout_default = manifest["timeouts"].get("read_only" if read_only else "writer", timeout_default)
@@ -491,11 +529,14 @@ def normalize_plan(plan: Mapping[str, Any], manifest: Optional[Mapping[str, Any]
             "owned_paths": owned,
             "read_only": read_only,
             "writes": writes,
+            "verification_workspace": verification_workspace,
             "objective": task_objective,
             "scope": contract_lists["scope"],
             "non_goals": contract_lists["non_goals"],
             "acceptance_criteria": contract_lists["acceptance_criteria"],
             "context_refs": contract_lists["context_refs"],
+            "change_recipe": execution_contract["change_recipe"],
+            "check_commands": execution_contract["check_commands"],
             "write_mode": "read-only" if read_only else "workspace-write",
             "timeout": float(timeout),
             "retry_policy": {"max_attempts": max_attempts},
@@ -1195,6 +1236,10 @@ class RunStore:
             "repo": dict(repo),
             "plan_hash": sha256_json(normalized),
             "manifest_hash": sha256_json(manifest_payload),
+            "package_version": manifest.get("package_version"),
+            "evidence_revision": 1,
+            "repair_waves": 0,
+            "revision_history": [],
             "tool_versions": {"python": sys.version.split()[0], "codex": command_version("codex"), "controller_schema": SCHEMA_VERSION},
             "gate_mode": normalized["gate_mode"],
             "hard_risk": normalized["hard_risk"],
@@ -1855,7 +1900,8 @@ def build_gate_packet(plan: Mapping[str, Any], state: Mapping[str, Any], mode: O
         raise ValidationError("guardian packet mode must be pre or final")
     packet = {
         "Mode": selected_mode,
-        "Role instructions": "Act as the delegated Guardian for this user task. Review only this packet and return the required verdict sections. Do not edit, delegate, or invoke another review or gate; this is the task's single final gate.",
+        "Role instructions": role_instructions("guardian"),
+        "Evidence binding": {"revision": state.get("evidence_revision", 1), "plan_hash": state.get("plan_hash"), "manifest_hash": state.get("manifest_hash")},
         "Decision": plan.get("objective", ""),
         "Risk classification": {"hard_risk": bool(plan.get("hard_risk")), "hard_risk_reasons": plan.get("hard_risk_reasons", [])},
         "Key invariants": [
@@ -1984,7 +2030,7 @@ def run_guardian(store: RunStore, state: Dict[str, Any], plan: Mapping[str, Any]
         journal.append("gate_started", {"gate_id": gate_id, "mode": selected_mode, "packet_hash": packet_hash})
     else:
         if not isinstance(existing, Mapping) or existing.get("status") != "pending":
-            raise ControllerError("run already consumed its single logical Astra gate")
+            raise ControllerError("run already consumed its logical Astra gate for this evidence revision")
         gate = dict(existing)
         gate_id = str(gate.get("gate_id", ""))
         packet_path = run_path / "inputs" / "guardian.json"
@@ -2085,10 +2131,12 @@ def _dependency_hash(state: Mapping[str, Any], task: Mapping[str, Any]) -> str:
 
 def _task_input_packet(plan: Mapping[str, Any], state: Mapping[str, Any], task: Mapping[str, Any], base_head: str) -> Dict[str, Any]:
     dependency_hash = _dependency_hash(state, task)
+    sandbox_read_only = task["read_only"] and task.get("verification_workspace") != "disposable"
     packet = {
         "run_id": state["run_id"],
         "task_id": task["task_id"],
         "role": task["role"],
+        "role_instructions": role_instructions(task["role"]),
         "objective": task["objective"],
         "prompt": task.get("prompt", task["objective"]),
         "scope": task.get("scope", []),
@@ -2096,7 +2144,11 @@ def _task_input_packet(plan: Mapping[str, Any], state: Mapping[str, Any], task: 
         "owned_paths": task.get("owned_paths", []),
         "acceptance_criteria": task.get("acceptance_criteria", []),
         "context_refs": task.get("context_refs", []),
+        "change_recipe": task.get("change_recipe", []),
+        "check_commands": task.get("check_commands", []),
+        "escalation_role": LUNA_ESCALATION.get(task["role"]),
         "write_mode": task["write_mode"],
+        "verification_workspace": task.get("verification_workspace", "read-only"),
         "base_head": base_head,
         "plan_hash": state["plan_hash"],
         "manifest_hash": state["manifest_hash"],
@@ -2129,7 +2181,7 @@ def _task_input_packet(plan: Mapping[str, Any], state: Mapping[str, Any], task: 
             "findings": [],
             "residual_risks": [],
             "follow_up_actions": [],
-            "requested": {"model": DEFAULT_ROLE_SPECS[task["role"]]["model"], "effort": DEFAULT_ROLE_SPECS[task["role"]]["reasoning_effort"], "sandbox": "read-only" if task["read_only"] else "workspace-write"},
+            "requested": {"model": DEFAULT_ROLE_SPECS[task["role"]]["model"], "effort": DEFAULT_ROLE_SPECS[task["role"]]["reasoning_effort"], "sandbox": "read-only" if sandbox_read_only else "workspace-write"},
             "observed": {"model": "observed model or unknown", "effort": "observed effort or unknown", "sandbox": "observed sandbox or unknown"},
         },
     }
@@ -2140,14 +2192,16 @@ def _task_input_packet(plan: Mapping[str, Any], state: Mapping[str, Any], task: 
             "Report modified_files exactly; the trusted controller will verify, stage, and create the only commit.",
             "Remove ignored build artifacts before returning success; hidden side effects fail closed.",
         ])
+    elif task.get("verification_workspace") == "disposable":
+        packet["requirements"].append("Run checks in this disposable checkout. Generated caches/build outputs are allowed; source, tests, config, lockfiles and Git metadata must remain unchanged. No output is integrated. Return modified_files=[] and commit_sha=null.")
     else:
         packet["requirements"].append("Remain read-only and do not modify the checkout.")
-        if state.get("integration"):
-            packet["verification_context"] = {
-                "source_base_head": state["repo"]["head"],
-                "checkout_head": base_head,
-                "note": "Prior writer changes are already committed and integrated. A clean checkout is expected. Compare source_base_head to checkout_head for the delivered diff; do not expect uncommitted writer edits.",
-            }
+    if not task["writes"] and state.get("integration"):
+        packet["verification_context"] = {
+            "source_base_head": state["repo"]["head"],
+            "checkout_head": base_head,
+            "note": "Prior writer changes are already committed and integrated. A clean checkout is expected. Compare source_base_head to checkout_head for the delivered diff; do not expect uncommitted writer edits.",
+        }
     return packet
 
 
@@ -2204,6 +2258,15 @@ def validate_task_result(value: Any, run_id: str, task: Mapping[str, Any]) -> Di
     if not isinstance(test_evidence, list):
         raise ValidationError("task result test_evidence must be an array")
     data["test_evidence"] = [_validate_test_evidence_item(item) for item in test_evidence]
+    if task["role"] == "check_runner":
+        expected = task.get("check_commands", [])
+        executed = [item["command"] for item in data["test_evidence"]]
+        if executed != expected[:len(executed)] or data["commands"] != executed:
+            raise ValidationError("check_runner evidence must match the executed prefix of check_commands in order")
+        if data["outcome"] == "succeeded" and executed != expected:
+            raise ValidationError("check_runner cannot succeed with omitted checks")
+        if any(item["exit_code"] != 0 for item in data["test_evidence"][:-1]):
+            raise ValidationError("check_runner must stop after the first failed command")
     commit_sha = data.get("commit_sha")
     if commit_sha is not None and (not isinstance(commit_sha, str) or not re.match(r"^[0-9a-f]{40,64}$", commit_sha)):
         raise ValidationError("task result commit_sha must be null or a full hexadecimal commit id")
@@ -2254,7 +2317,8 @@ class Orchestrator:
         self.runner = runner or CodexRunner(role_specs=self.manifest.get("roles"))
 
     def _manifest_matches_run(self, state: Mapping[str, Any]) -> bool:
-        current_hash = sha256_json({key: value for key, value in self.manifest.items() if key != "manifest_path"})
+        current = load_manifest(self.repo)
+        current_hash = sha256_json({key: value for key, value in current.items() if key != "manifest_path"})
         return current_hash == state.get("manifest_hash")
 
     def _require_installed_topology(self) -> None:
@@ -2283,6 +2347,7 @@ class Orchestrator:
             return True
         packet = {
             "role": "conductor", "run_id": state["run_id"],
+            "role_instructions": role_instructions("conductor"),
             "mode": "native" if state["repo"].get("native_completion") else "runner",
             "objective": plan["objective"], "baseline": state["repo"],
             "tasks": plan["tasks"],
@@ -2297,7 +2362,7 @@ class Orchestrator:
         }
         record = {"status": "running", "packet_hash": sha256_json(packet),
                   "plan_hash": state["plan_hash"], "manifest_hash": state["manifest_hash"],
-                  "requested_runtime": {"model": "gpt-6.1-sol", "reasoning_effort": "max", "sandbox_mode": "read-only"}}
+                  "requested_runtime": {"model": DEFAULT_ROLE_SPECS["conductor"]["model"], "reasoning_effort": DEFAULT_ROLE_SPECS["conductor"]["reasoning_effort"], "sandbox_mode": "read-only"}}
         atomic_write_json(self.store.run_path(state["run_id"]) / "inputs" / "conductor.json", packet, mode=0o600)
         state["conductor"] = record
         if state["state"] in {"needs_input", "failed"}:
@@ -2399,6 +2464,60 @@ class Orchestrator:
                 transition_run(self.store, state, "needs_input", "run_needs_input", {"reason": state["error"]})
             raise ControllerError(state["error"])
 
+    def _begin_native_revision(self, state: Dict[str, Any], completion: Mapping[str, Any], snapshot: Mapping[str, Any], evidence_repo: Optional[Path] = None, old_snapshot: Optional[Mapping[str, Any]] = None, verification_failed: bool = False) -> None:
+        """Archive a rejected revision before accepting a repaired candidate.
+
+        A new receipt alone never buys another verdict. Source tree, explicit
+        repair accounting and tests bound to the new HEAD are required.
+        """
+        gate = state.get("gate") or {}
+        review = state.get("review") or {}
+        if (gate and gate.get("status") not in {"revise", "block"}) or (not gate and review.get("verdict") not in {"revise", "block"} and not verification_failed):
+            raise ControllerError("new evidence revision requires a rejected review/gate, not a repeated approval request")
+        if state.get("repair_waves", 0) >= MAX_REPAIR_WAVES:
+            raise ControllerError("five repair waves exhausted; stop and report unresolved findings")
+        old = old_snapshot or state.get("native_final_snapshot") or {}
+        repo = evidence_repo or self.repo
+        old_tree = _trusted_git(repo, ["rev-parse", str(old.get("head")) + "^{tree}"]).stdout.strip()
+        new_tree = _trusted_git(repo, ["rev-parse", snapshot["head"] + "^{tree}"]).stdout.strip()
+        seen = {item.get("tree") for item in state.get("revision_history", [])}
+        if old_tree == new_tree or new_tree in seen:
+            raise ControllerError("new gate requires a changed, previously unreviewed source tree")
+        repair = completion.get("repair")
+        if (not isinstance(repair, Mapping) or not isinstance(repair.get("reason"), str) or not repair["reason"].strip()
+                or not isinstance(repair.get("issue_id"), str) or not repair["issue_id"].strip()
+                or not isinstance(repair.get("addressed_findings"), list) or not repair["addressed_findings"]
+                or any(not isinstance(item, str) or not item.strip() for item in repair["addressed_findings"])
+                or repair.get("verification_head") != snapshot["head"] or not completion.get("test_evidence")):
+            raise ValidationError("repair requires reason, issue_id, addressed_findings and fresh test evidence bound by verification_head")
+        prior_attempts = sum(item.get("repair", {}).get("issue_id") == repair["issue_id"] for item in state.get("revision_history", []))
+        if prior_attempts >= 2:
+            evidence = repair.get("debugger_evidence")
+            if not isinstance(evidence, Mapping) or set(evidence) != {"path", "sha256"}:
+                raise ValidationError("two failed fixes of the same issue require hashed debugger_evidence")
+            relative = normalize_relative_path(evidence["path"])
+            root = self.store.run_path(state["run_id"])
+            artifact = root / relative
+            if not artifact.is_file() or artifact.is_symlink() or _path_has_symlink_component(root, relative) or sha256_file(artifact) != evidence["sha256"]:
+                raise ValidationError("debugger evidence is missing or its hash changed")
+        revision = int(state.get("evidence_revision", 1))
+        run_path = self.store.run_path(state["run_id"])
+        archive = run_path / "evidence" / ("revision-%d" % revision)
+        archive.mkdir(mode=0o700, exist_ok=True)
+        for relative in ("inputs/guardian.json", "results/guardian.json", "results/reviewer.json", "evidence/final.diff"):
+            source = run_path / relative
+            if source.is_file():
+                atomic_write_bytes(archive / relative.replace("/", "-"), source.read_bytes(), mode=0o600)
+        atomic_write_json(archive / "state.json", state, mode=0o600)
+        history = {"revision": revision, "tree": old_tree, "snapshot": old,
+                   "completion_hash": state.get("native_completion_hash"), "gate": gate, "review": review,
+                   "repair": dict(repair), "archive": str(archive)}
+        state.setdefault("revision_history", []).append(history)
+        state.update(evidence_revision=revision + 1, repair_waves=int(state.get("repair_waves", 0)) + 1,
+                     gate=None, review=None)
+        # The caller saves this transition together with the new receipt; a
+        # crash cannot erase a gate without also binding its replacement.
+
     def native_gate(self, completion_path: Path, run_id: str, waiver: Optional[str] = None) -> Dict[str, Any]:
         """Verify native work, run Reviewer, then consume one final Guardian."""
         completion = read_json(Path(completion_path).resolve())
@@ -2425,8 +2544,6 @@ class Orchestrator:
             if completion.get("objective") != plan["objective"]:
                 raise ValidationError("native completion objective differs from the recorded task")
             existing_hash = state.get("native_completion_hash")
-            if existing_hash is not None and existing_hash != completion_hash and state.get("gate") is not None:
-                raise ControllerError("native completion changed; the same task cannot silently launch another gate")
             baseline = state["repo"]
             snapshot = require_clean_repo(self.repo)
             for field in ("repo_root", "git_dir", "branch"):
@@ -2442,8 +2559,11 @@ class Orchestrator:
                     raise ValidationError("native completion %s differs from the verified snapshot" % field)
             if actual_changes and not checks:
                 raise ValidationError("changed native work requires successful concrete verification evidence")
-            if state.get("gate") is not None and snapshot != state.get("native_final_snapshot"):
-                raise ControllerError("native repository changed after the single final gate; evidence is stale")
+            revised = existing_hash is not None and (existing_hash != completion_hash or snapshot != state.get("native_final_snapshot"))
+            if existing_hash == completion_hash and revised:
+                raise ValidationError("new source revision requires a new completion receipt")
+            if revised:
+                self._begin_native_revision(state, completion, snapshot)
             if existing_hash != completion_hash:
                 integration = None
                 if diff:
@@ -2464,6 +2584,8 @@ class Orchestrator:
                 })
                 state["tasks"]["native-review"].update({"state": "pending", "status": "pending", "result_summary": None})
                 self.store.save_state(run_id, state)
+                if revised:
+                    EventJournal(self.store.run_path(run_id) / "events.jsonl", run_id).append("evidence_revision", {"revision": state["evidence_revision"], "repair_waves": state["repair_waves"], "completion_hash": completion_hash})
                 if state["state"] != "running":
                     transition_run(self.store, state, "running", "run_resumed", {"reason": "completed native work awaiting final checks"})
             if state.get("gate") is None:
@@ -2495,6 +2617,72 @@ class Orchestrator:
                     transition_run(self.store, state, "completed", "run_completed", {"gate_mode": "final", "native_completion": True})
             return {"ok": state["state"] == "completed", "run_id": run_id, "state": state["state"], "gate": state.get("gate"), "review": state.get("review")}
 
+    def revise_run(self, completion_path: Path, run_id: str) -> Dict[str, Any]:
+        """Adopt a host repair in private integration, then rerun verification.
+
+        This never relaunches a delivery writer or changes the immutable DAG.
+        The host supplies a repaired, committed tree and a concrete receipt.
+        """
+        completion = read_json(Path(completion_path).resolve())
+        if not isinstance(completion, Mapping):
+            raise ValidationError("repair receipt must be an object")
+        with self.store.lock(run_id):
+            state, plan = self.store.load(run_id)
+            if state.get("repo", {}).get("native_completion"):
+                raise ValidationError("native repairs use native-gate")
+            if not self._manifest_matches_run(state) or not self._conductor_ready(state):
+                raise ValidationError("repair requires the original ready plan and unchanged package")
+            self._require_installed_topology()
+            if state["state"] not in {"needs_input", "failed"} or completion.get("objective") != plan["objective"]:
+                raise ValidationError("repair must address the same incomplete task")
+            writers = [task for task in plan["tasks"] if task["writes"]]
+            if not writers or any(state["tasks"][task["task_id"]]["state"] != "succeeded" for task in writers):
+                raise ValidationError("repair cannot bypass an uncertain or incomplete writer")
+            integration = state.get("integration") or {}
+            path = Path(integration.get("path", ""))
+            expected_path = self.store.run_path(run_id) / "worktrees" / "integration"
+            if path.resolve() != expected_path.resolve() or path.is_symlink():
+                raise RepoSafetyError("repair must use this run's private integration checkout")
+            verify_repo(self.repo, state["repo"], require_clean=True)
+            snapshot = require_clean_repo(path)
+            if snapshot["branch"] != integration.get("branch"):
+                raise RepoSafetyError("repair changed the integration branch")
+            _trusted_git(path, ["merge-base", "--is-ancestor", integration["head"], snapshot["head"]])
+            changed = changed_paths(path, integration["head"])
+            owned = [owned for task in writers for owned in task["owned_paths"]]
+            validate_writer_path_set(path, integration["head"], changed, owned)
+            test_paths = [owned for task in writers if task["role"] == "test_author" for owned in task["owned_paths"]]
+            if any(path_is_owned(item, test_paths) for item in changed):
+                appeal = completion.get("test_appeal")
+                if not isinstance(appeal, Mapping) or any(not isinstance(appeal.get(key), str) or not appeal[key].strip() for key in ("requirement_conflict", "counterexample", "author_resolution")):
+                    raise ValidationError("frozen test changes require an explicit test_appeal with requirement_conflict, counterexample and author_resolution")
+            checks = completion.get("test_evidence")
+            if not isinstance(checks, list) or not checks or any(_validate_test_evidence_item(check)["exit_code"] != 0 for check in checks):
+                raise ValidationError("repair receipt requires successful concrete checks before independent verification")
+            verification_failed = any(task["role"] in CHECK_ROLES and state["tasks"][task["task_id"]]["state"] in {"failed", "needs_input"} for task in plan["tasks"])
+            self._begin_native_revision(state, completion, snapshot, path, {"head": integration["head"]}, verification_failed)
+            previous_head = integration["head"]
+            integration.update(head=snapshot["head"], delivery_commit=None, verified=False)
+            integration["writer_commits"].append({"task_id": "host-repair-%d" % state["repair_waves"], "source_commit": snapshot["head"], "integrated_commit": snapshot["head"], "evidence_hash": sha256_json(completion), "previous_head": previous_head})
+            state["test_evidence"] = None
+            state["error"] = None
+            # Re-run verification and its read-only descendants. Pre-implementation
+            # exploration/design evidence and completed writer receipts are preserved.
+            refresh = {task["task_id"] for task in plan["tasks"] if task["role"] in CHECK_ROLES}
+            for task_id in plan["topological_order"]:
+                task = _task_lookup(plan)[task_id]
+                if any(dep in refresh for dep in task["depends_on"]):
+                    if task["writes"]:
+                        raise ValidationError("repair would invalidate a downstream writer; a new bounded plan is required")
+                    refresh.add(task_id)
+            for task_id in refresh:
+                state["tasks"][task_id].update(state="pending", status="pending", evidence=None, result_summary=None, attempts=0, retry_count=0, error=None, launch_released=False)
+            self.store.save_state(run_id, state)
+            EventJournal(self.store.run_path(run_id) / "events.jsonl", run_id).append("evidence_revision", {"revision": state["evidence_revision"], "repair_waves": state["repair_waves"], "head": snapshot["head"], "refreshed_tasks": sorted(refresh)})
+            transition_run(self.store, state, "running", "run_resumed", {"reason": "repaired integration requires fresh tests, review and gate"})
+            self._execute_ready(run_id, state, plan, self.manifest)
+        return self.status(run_id)
+
     def run(self, plan_path: Path, run_id: Optional[str] = None, dry_run: bool = False) -> Dict[str, Any]:
         normalized = validate_plan(read_json(Path(plan_path).resolve()), manifest=self.manifest)
         if dry_run:
@@ -2521,7 +2709,7 @@ class Orchestrator:
         if isinstance(existing, Mapping) and existing.get("status") in {"approve", "waived"}:
             return True
         if isinstance(existing, Mapping) and existing.get("status") not in {"pending", "unavailable"}:
-            state["error"] = "single Astra gate already consumed with status %s" % existing.get("status", "unknown")
+            state["error"] = "Astra gate for this revision already consumed with status %s" % existing.get("status", "unknown")
             self.store.save_state(state["run_id"], state)
             if state["state"] != "needs_input":
                 transition_run(self.store, state, "needs_input", "run_needs_input", {"reason": state["error"]})
@@ -2610,18 +2798,46 @@ class Orchestrator:
         }
 
     def _run_task_process(self, state_snapshot: Mapping[str, Any], context: Mapping[str, Any]) -> Dict[str, Any]:
+        if context["task"].get("verification_workspace") != "disposable":
+            return self._execute_task_process(state_snapshot, context)
+        # Never grant test output writes in the implementation/integration tree.
+        root = self.store.worktrees_path(state_snapshot["run_id"])
+        root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="verify-", dir=str(root)) as directory:
+            checkout = Path(directory) / "checkout"
+            create_worktree(Path(context["cwd"]), checkout, "verification", str(context["base_head"]))
+            before = git_protected_snapshot(checkout)
+            actual = dict(context, cwd=checkout)
+            outcome = self._execute_task_process(state_snapshot, actual)
+            after = git_protected_snapshot(checkout)
+            fields = ("head", "branch", "index_tree", "config_hash", "refs_hash", "hooks_hash")
+            pending = pending_writer_paths(checkout, str(context["base_head"]))
+            if any(before[key] != after[key] for key in fields) or pending["tracked"]:
+                raise ValidationError("verification modified tracked source/tests/config or protected Git metadata; evidence rejected")
+            verification = {"kind": "disposable-clone", "base_head": context["base_head"],
+                            "tracked_files_unchanged": True, "git_metadata_unchanged": True,
+                            "discarded_outputs": sorted(pending["untracked"] + pending["ignored"])}
+            outcome["record"]["verification_environment"] = verification
+            if outcome["evidence"] is not None:
+                outcome["evidence"]["verification_environment"] = verification
+                outcome["evidence"].pop("hash", None)
+                outcome["evidence"]["hash"] = sha256_json(outcome["evidence"])
+            return outcome
+
+    def _execute_task_process(self, state_snapshot: Mapping[str, Any], context: Mapping[str, Any]) -> Dict[str, Any]:
         task = context["task"]
         role = task["role"]
         role_config = role_spec(self.manifest, role)
+        sandbox_read_only = task["read_only"] and task.get("verification_workspace") != "disposable"
         requested = {
             "model": role_config["model"],
             "reasoning_effort": role_config["reasoning_effort"],
-            "sandbox_mode": "read-only" if task["read_only"] else "workspace-write",
+            "sandbox_mode": "read-only" if sandbox_read_only else "workspace-write",
         }
         result = self.runner.invoke(
             prompt=canonical_json(context["packet"]).decode("utf-8"),
             role=role,
-            read_only=task["read_only"],
+            read_only=sandbox_read_only,
             cwd=Path(context["cwd"]),
             output_schema=SCHEMA_DIR / "result.schema.json",
             timeout=float(task["timeout"]),
@@ -2656,6 +2872,8 @@ class Orchestrator:
                 result_record[field] = result[field]
         if structured["outcome"] != "succeeded":
             return {"record": result_record, "evidence": None, "raw": result}
+        if role in CHECK_ROLES and (not structured["test_evidence"] or any(item["exit_code"] != 0 for item in structured["test_evidence"])):
+            raise ValidationError("successful tester requires executed, successful concrete test evidence")
         if task["writes"]:
             if structured["commit_sha"] is not None:
                 raise ValidationError("writer model must not create or report a commit")
@@ -3014,7 +3232,7 @@ class Orchestrator:
         packet = build_gate_packet(plan, state, mode="final")
         packet.pop("Controller isolation request", None)
         packet.pop("Reviewer result", None)
-        packet["Role instructions"] = "Act as the delegated Reviewer for this user task. Review the final result and concrete verification evidence, then return the required verdict sections. Do not edit, delegate, or invoke Guardian; the controller runs the final gate after your result.",
+        packet["Role instructions"] = role_instructions("reviewer") + " Return the required verdict sections; the controller runs Guardian."
         if state.get("repo", {}).get("native_completion"):
             packet["Task results"].pop("native-review", None)
         review_kind = "integration" if integration else "read-only"
@@ -3047,7 +3265,7 @@ class Orchestrator:
         }
         state["review"] = review
         self.store.save_state(state["run_id"], state)
-        atomic_write_json(self.store.run_path(state["run_id"]) / "results" / "sol-review.json", review, mode=0o600)
+        atomic_write_json(self.store.run_path(state["run_id"]) / "results" / "reviewer.json", review, mode=0o600)
         EventJournal(self.store.run_path(state["run_id"]) / "events.jsonl", state["run_id"]).append("review_completed", {"kind": review_kind, "packet_hash": packet_hash, "verdict": parsed["verdict"]})
         return parsed["verdict"] == "approve"
 
@@ -3057,6 +3275,10 @@ class Orchestrator:
         tasks = _task_lookup(plan)
         run_path = self.store.run_path(run_id)
         while state["state"] == "running":
+            if not self._manifest_matches_run(state):
+                state["error"] = "package configuration changed during the run; evidence is stale"
+                transition_run(self.store, state, "needs_input", "run_needs_input", {"reason": state["error"]})
+                return
             if self._mark_stale_evidence(state, plan):
                 for task_id in plan["topological_order"]:
                     task_state = state["tasks"][task_id]
@@ -3263,7 +3485,7 @@ class Orchestrator:
                     "evidence_hash": (task_state.get("evidence") or {}).get("hash"),
                 }
                 for task_id, task_state in state["tasks"].items()
-                if tasks[task_id]["role"] == "tester"
+                if tasks[task_id]["role"] in CHECK_ROLES
             } or "not applicable"
             self.store.save_state(run_id, state)
             if not self._run_final_reviewer_review(state, plan):
@@ -4511,7 +4733,9 @@ def global_doctor(repo: Path, codex_home: Path, manifest: Mapping[str, Any]) -> 
         expected = {"model": spec["model"], "model_reasoning_effort": spec["reasoning_effort"], "sandbox_mode": spec["sandbox_mode"]}
         path = codex_home / "agents" / (name + ".toml")
         actual = _agent_file_spec(path)
-        roles[name] = {"ok": actual == expected, "path": str(path), "expected": expected, "actual": actual}
+        source = SKILL_DIR / "roles" / (name + ".toml")
+        prompt_matches = path.is_file() and source.is_file() and sha256_file(path) == sha256_file(source)
+        roles[name] = {"ok": actual == expected and prompt_matches, "path": str(path), "expected": expected, "actual": actual, "profile_matches": prompt_matches}
     checks["roles"] = {"ok": all(v["ok"] for v in roles.values()), "roles": roles}
     conflicts = []
     managed_keys = set(manifest["managed_config_keys"])
@@ -4698,6 +4922,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("run"); p.add_argument("plan"); p.add_argument("--run-id", default=None); p.add_argument("--dry-run", action="store_true"); p.add_argument("--repo", default=argparse.SUPPRESS); p.add_argument("--codex-home", default=argparse.SUPPRESS)
     p = sub.add_parser("native-gate"); p.add_argument("completion"); p.add_argument("--run-id", required=True); p.add_argument("--waiver", default=None); p.add_argument("--repo", default=argparse.SUPPRESS); p.add_argument("--codex-home", default=argparse.SUPPRESS)
     p = sub.add_parser("native-begin"); p.add_argument("--run-id", required=True); p.add_argument("--objective", required=True); p.add_argument("--repo", default=argparse.SUPPRESS); p.add_argument("--codex-home", default=argparse.SUPPRESS)
+    p = sub.add_parser("revise-run"); p.add_argument("completion"); p.add_argument("--run-id", required=True); p.add_argument("--repo", default=argparse.SUPPRESS); p.add_argument("--codex-home", default=argparse.SUPPRESS)
     p = sub.add_parser("status"); p.add_argument("run_id"); p.add_argument("--repo", default=argparse.SUPPRESS); p.add_argument("--codex-home", default=argparse.SUPPRESS)
     p = sub.add_parser("resume"); p.add_argument("run_id"); p.add_argument("--waiver", default=None); p.add_argument("--repo", default=argparse.SUPPRESS); p.add_argument("--codex-home", default=argparse.SUPPRESS)
     p = sub.add_parser("cancel"); p.add_argument("run_id"); p.add_argument("--reason", default="cancelled by user"); p.add_argument("--repo", default=argparse.SUPPRESS); p.add_argument("--codex-home", default=argparse.SUPPRESS)
@@ -4726,6 +4951,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             result = Orchestrator(repo, codex_home).native_gate(Path(args.completion), args.run_id, waiver=args.waiver)
         elif args.command == "native-begin":
             result = Orchestrator(repo, codex_home).native_begin(args.run_id, args.objective)
+        elif args.command == "revise-run":
+            result = Orchestrator(repo, codex_home).revise_run(Path(args.completion), args.run_id)
         elif args.command == "status":
             result = Orchestrator(repo, codex_home).status(args.run_id)
         elif args.command == "resume":
