@@ -1,6 +1,6 @@
 ---
 name: codex-native-orchestrator
-description: Plan, implement and check scoped repository work with native Codex roles when explicitly invoked or authorized by the current Ultra runtime. Keep simple work in the host; no automatic tests or extra acceptance gates.
+description: Plan, implement and check scoped repository work with native Codex roles when explicitly invoked or authorized by the current Ultra runtime. Let the planner select the roles actually needed, while minimizing extra tests and repeated review.
 ---
 
 # Codex Native Orchestration
@@ -24,16 +24,18 @@ Do only the user's requested work and deliver the minimum working result. Do not
 
 Do not calculate SHA-256, MD5, checksums, fingerprints or signatures, create `.sha256` files, or add integrity/evidence layers by default. Hashing is allowed only when the user explicitly requests published checksums, deduplication, cache-hit decisions, or rejection against a known digest, and the result is actually published or consumed by that requested operation. A digest without a downstream consumer is forbidden. "Just in case", professionalism and future traceability are not authorization.
 
-Do not author or run tests, builds, benchmarks, A/B experiments, mutation checks or test suites unless explicitly requested by the user. Do not disguise them as checks. An orchestration invocation or Ultra mode does not request testing. Do not add subagents, full reviews or extra gates merely for reassurance.
+The planner may select any available role, including test and specialist review roles, when a concrete need within the user's task justifies it. The user does not need to name each role or separately request each necessary check. An explicit user prohibition, such as no tests or read-only, still takes precedence.
+
+Minimize extra testing. Start with source/result inspection and reuse existing observations. Add a targeted test or command only when an important behavior or decision cannot be adequately resolved from those sources. Prefer existing focused tests; author new cases only for a concrete gap. Do not default to full suites, build matrices, benchmarks, A/B or mutation experiments, separate test environments or another review pass. A role's availability, task size or general importance alone is not a reason to use it. Say briefly which concrete question a selected specialist or test will resolve; do not create a new approval form, ledger or evidence layer.
 
 When a proposed addition exceeds the requested scope, stop that addition, ask one sentence — “我想加 X，因为 Y，是否允许？” — and wait. Do not do it first or ask about routine work already authorized.
 
 ## Plan → implement → check → fix or release
 
-1. **Plan:** Understand the goal, relevant source, constraints, dependencies and completion conditions. Decide the smallest implementation before editing. Keep one proportionate plan in the conversation; revise only facts that changed. The host plans simple work. Use one `conductor` only when the requested decomposition needs it; it is not a mandatory startup gate.
+1. **Plan:** Understand the goal, relevant source, constraints, dependencies and completion conditions. Decide the smallest implementation before editing. Keep one proportionate plan in the conversation; revise only facts that changed. The host handles simple work and `root-only`. For work entering multi-role orchestration, use one `conductor` to assess the task and select the roles it actually needs. Give it access to the full role catalog; do not restrict specialists to user-named requests. The host dispatches its selections without nested delegation.
 2. **Implement:** The host or one suitable writer makes the scoped change. Delegate only actual parts of the authorized work. Share the relevant plan and paths, not the whole conversation. Order dependent edits; use parallel writers only when the requested work actually needs independent parts.
-3. **Check once:** The host or one `reviewer` compares the actual result/diff with the requirements and relevant callers. This is a focused content/code inspection, not command execution, a test phase or a full-repository audit. Choose one owner; do not repeat the same check in the host and another role. A review-only request produces findings and never authorizes edits.
-4. **Fix or release:** For an implementation request, fix concrete in-scope defects, then inspect only the repair and directly affected paths. Reuse unchanged conclusions. If the result meets the request and no concrete issue remains, deliver immediately. No automatic Guardian, fresh reviewer, test rerun, diagnostic escalation or fixed number of repair waves. If a repair needs new scope or a missing decision, explain that specific blocker.
+3. **Check once:** The host or one `reviewer` compares the actual result/diff with the requirements and relevant callers. This is a focused content/code inspection. The plan may separately assign a minimal targeted test or specialist to resolve a concrete important question. Choose one owner for each question; do not repeat the same check in the host and another role. A review-only request produces findings and never authorizes edits.
+4. **Fix or release:** For an implementation request, fix concrete in-scope defects, then inspect only the repair and directly affected paths. Reuse unchanged conclusions. If the result meets the request and no concrete issue remains, deliver immediately. Do not append Guardian, a fresh reviewer, a test rerun or a diagnostic role as a routine final step. Add a role only for a concrete unresolved question that materially affects the result; rerun only a check whose relevant inputs changed. There is no fixed number of repair waves. If a repair needs new scope or a missing decision, explain that specific blocker.
 
 See [routing](references/routing.md) when assigning work, [delegation](references/delegation-contract.md) when forming a packet, and [checking](references/quality-workflow.md) for the completion boundary.
 
@@ -45,7 +47,7 @@ See [routing](references/routing.md) when assigning work, [delegation](reference
 | scout, mechanic, check_runner | `gpt-6-luna` | `max` |
 | design_critic, debugger, guardian | `gpt-6-astra` | `xhigh` |
 
-The JSON manifest defines the named role models and efforts. Preserve them; do not silently substitute. Use native agent tools directly. `test_author`, `tester`, `check_runner`, `guardian`, `design_critic` and `finding_validator` are explicit-request-only specialist roles, not a pipeline. Their presence does not require using them. A missing test report, digest or Guardian verdict is not a reason to block normal completion.
+The JSON manifest defines the named role models and efforts. Preserve them; do not silently substitute. Use native agent tools directly. All roles, including `test_author`, `tester`, `check_runner`, `guardian`, `design_critic` and `finding_validator`, are available for planner selection based on the actual task. Do not require the user to request these names. Selecting roles means choosing a useful subset, not running the entire catalog. A missing test report, digest or Guardian verdict alone does not block completion; a concrete important unresolved behavior does.
 
 Default to one writer and at most four children, only as needed. Honor `root-only`, `max agents N` and `read-only`; `root-only` uses the host for planning, implementation and inspection. Children cannot delegate. Sandbox metadata describes the requested profile, not stronger permissions than the active session grants.
 

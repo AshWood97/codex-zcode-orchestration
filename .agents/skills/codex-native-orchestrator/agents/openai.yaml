@@ -1,7 +1,7 @@
 interface:
   display_name: "Codex Native Orchestration"
-  short_description: "Plan, implement and inspect scoped changes"
-  default_prompt: "Use $codex-native-orchestrator to plan, implement and inspect the requested change, fixing concrete issues and delivering the minimum working result."
+  short_description: "Assess tasks and select the roles they need"
+  default_prompt: "Use $codex-native-orchestrator to assess the task, select the necessary roles, implement and inspect the result while minimizing extra tests."
 
 policy:
   allow_implicit_invocation: false

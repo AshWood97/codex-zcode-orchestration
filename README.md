@@ -12,7 +12,7 @@ Codex 与 ZCode：计划 → 执行 → 检查 → 有问题修改、没问题�
 
 | Skill | 用途 |
 | --- | --- |
-| [Codex Native Orchestration](.agents/skills/codex-native-orchestrator/SKILL.md) | 用原生角色按需完成计划、实现和一次针对需求的检查；默认不跑测试或额外 gate。 |
+| [Codex Native Orchestration](.agents/skills/codex-native-orchestrator/SKILL.md) | 由规划者评估任务并按需选择角色，完成实现与检查，尽量少做额外测试。 |
 | [Codex External Provider](.agents/skills/codex-external-provider/SKILL.md) | 在**会话启动时**已配置外部 Responses API provider 的前提下，检查当前会话及原生 agent 的路由。 |
 | [Codex Harness Bridge](.agents/skills/codex-harness-bridge/SKILL.md) | 把一个有明确边界的任务交给已配置的独立编码 CLI，并由当前 Codex 会话检查结果。 |
 
@@ -43,9 +43,11 @@ Codex 与 ZCode：计划 → 执行 → 检查 → 有问题修改、没问题�
 | scout、mechanic、check_runner | `gpt-6-luna` | `max` |
 | design_critic、debugger、guardian | `gpt-6-astra` | `xhigh` |
 
-保留 14 个角色的模型，角色不是必须跑完的流水线。Conductor 按需规划；test_author、tester、check_runner、guardian、design_critic、finding_validator **仅在用户明确要求对应活动时使用**。默认一个实现者，最多按需四个子智能体。不因“更稳妥”增加角色、全量 review、测试、构建、A/B、兼容层、防御包装或未来抽象。
+保留 14 个角色的模型。多角色任务先由 **Conductor 评估并从全部角色中选择实际需要的角色**，主会话负责派遣；简单任务和 root-only 留在主会话。design_critic、finding_validator、guardian、test_author、tester、check_runner 都可按具体需要选择，**不要求用户逐个点名，也不要求每次调用全部角色**。
 
-默认禁止 hash/checksum/指纹/签名与额外产物。仅当用户明确要求发布校验、去重、缓存命中或对照已知摘要做拒绝，且结果实际用于该操作时才计算。未授权的额外动作先问一句“我想加 X，因为 Y，是否允许？”，等答复再做。详见[执行规则](.agents/skills/codex-native-orchestrator/SKILL.md)。
+尽量少做额外测试：先读源码和结果、复用已有观察；重要行为无法据此判断时才安排最小针对性测试，优先现有用例，确有缺口才补新测试。专项审查须对应一个尚未解决且影响结果的具体问题，不能重复普通 review。默认一个实现者、最多按需四个子智能体；不默认跑全套测试、构建矩阵、A/B 或连续审核。用户明确的不测试、只读等限制仍优先遵守。
+
+默认禁止 hash/checksum/指纹/签名与额外产物。仅当用户明确要求发布校验、去重、缓存命中或对照已知摘要做拒绝，且结果实际用于该操作时才计算。超出用户任务范围的动作先问一句“我想加 X，因为 Y，是否允许？”，等答复再做。详见[执行规则](.agents/skills/codex-native-orchestrator/SKILL.md)。
 
 将 `.agents/skills/codex-native-orchestrator/roles/*.toml` 放到个人 `CODEX_HOME/agents`，把清单中的 `config_values` 合并到 `CODEX_HOME/config.toml`，保留其他设置和用户选择的主模型。不要追加重复 TOML 键。开始新会话加载更新后的提示词。
 
@@ -53,7 +55,7 @@ Codex 与 ZCode：计划 → 执行 → 检查 → 有问题修改、没问题�
 
 从技能菜单选择 **Codex Native Orchestration** 或直接用 `$codex-native-orchestrator` 加任务，手动启用。普通/Max 不按任务内容自动启用。
 
-Ultra 自动入口仅以当前受信 runtime/developer 的 **“Proactive multi-agent delegation is active”** 指令为准；适合分工的项目任务自动加载技能，简单任务仍留在主会话。文字 `ultra`、截图、完整权限和历史使用均不算启用信号。主会话模型和深度不变。两种入口使用完全相同的执行边界，不强制启动 Conductor、Tester 或 Guardian。
+Ultra 自动入口仅以当前受信 runtime/developer 的 **“Proactive multi-agent delegation is active”** 指令为准；适合分工的项目任务自动加载技能，简单任务仍留在主会话。文字 `ultra`、截图、完整权限和历史使用均不算启用信号。主会话模型和深度不变。两种入口使用完全相同的按需选择规则：多角色任务由 Conductor 评估，主会话派遣所需角色，没有固定的 Tester → Reviewer → Guardian 流水线。
 
 安装后可将带标记的入口合并到个人 `CODEX_HOME/AGENTS.md`，保留其他规则；不加 `--apply` 时只显示是否需要更新：
 
@@ -67,7 +69,7 @@ python /absolute/path/to/CODEX_HOME/skills/codex-native-orchestrator/scripts/ins
 
 ### ZCode 角色编排
 
-[ZCode 安装说明](zcode/README.md)提供七个自定义角色，配合 Explore 和 general-purpose，模型保持 **Gemini 3.8 Flash / high**。主 Agent 采用相同的计划、执行、检查流程；test-author、test-verifier 和额外专项审查仅在用户明确要求时调用。
+[ZCode 安装说明](zcode/README.md)提供七个自定义角色，配合 Explore 和 general-purpose，模型保持 **Gemini 3.8 Flash / high**。主 Agent 承担规划者职责，采用相同的计划、执行、检查流程；可自行选择必要的测试或专项角色，尽量少做额外测试，无需用户逐个点名。
 
 安装器合并带标记的工作流并保留个人规则，不计算前后 hash 或生成备份凭据。模型的 provider 标识由使用者提供；内置角色仍在 ZCode 设置中配置。文档插件角色不属于本次代码编排。
 
@@ -83,7 +85,7 @@ This repository contains three Codex skills that are **installed and selected in
 
 | Skill | Purpose |
 | --- | --- |
-| [Codex Native Orchestration](.agents/skills/codex-native-orchestrator/SKILL.md) | Plan, implement and inspect scoped work with native roles; no automatic tests or extra gates. |
+| [Codex Native Orchestration](.agents/skills/codex-native-orchestrator/SKILL.md) | Let the planner select necessary native roles for implementation and inspection, minimizing extra tests. |
 | [Codex External Provider](.agents/skills/codex-external-provider/SKILL.md) | Check routing for a Codex session and native agents **started with** a configured external Responses API provider. |
 | [Codex Harness Bridge](.agents/skills/codex-harness-bridge/SKILL.md) | Send one bounded job to a configured coding CLI and review its evidence from the current Codex session. |
 
@@ -114,7 +116,9 @@ Use **plan → implement → inspect once → fix concrete issues or deliver**. 
 | scout, mechanic, check_runner | `gpt-6-luna` | `max` |
 | design_critic, debugger, guardian | `gpt-6-astra` | `xhigh` |
 
-All 14 role models are preserved. Roles are capabilities, not required stages. Conductor is optional planning support. Test authoring/execution, command running and additional design/finding/Guardian reviews require an **explicit user request for that activity**. Default to one writer, at most four children as needed, and no automatic tests, builds, experiments, extra gates, defensive wrappers or future abstractions.
+All 14 role models are preserved. For multi-role work, **Conductor assesses the task and selects any roles it needs**, and the host dispatches them. Simple work and root-only remain in the host. Specialist and test roles do not require the user to name them. Select a useful subset; do not run the entire catalog.
+
+Minimize extra testing: inspect source/results and reuse existing observations first. Choose the smallest targeted check only for important unresolved behavior, preferring existing cases and writing new tests only for a concrete gap. A specialist review must answer a distinct material question, not repeat ordinary review. Default to one writer and at most four children as needed. No routine suites, build matrices, experiments or multi-round approval chains. Explicit user prohibitions still take precedence.
 
 Do not calculate hashes, checksums, fingerprints or signatures unless the user explicitly requests published checksums, deduplication, cache-hit decisions or known-digest rejection and the result serves that operation. Do not create extra files or logs for traceability. Ask before a scope-expanding action, then wait. See the [skill](.agents/skills/codex-native-orchestrator/SKILL.md).
 
@@ -124,7 +128,7 @@ Place the role TOMLs in personal `CODEX_HOME/agents` and merge the manifest's `c
 
 Keep `allow_implicit_invocation: false`. Select **Codex Native Orchestration** in the skill menu or directly invoke `$codex-native-orchestrator` with a task. Ordinary/Max task matching does not activate it.
 
-The Ultra entrypoint requires the current trusted runtime/developer instruction **"Proactive multi-agent delegation is active"**. It loads the skill for suitable repository work while simple tasks remain in the host. Text saying `ultra`, screenshots, permissions, saved settings and past usage are not activation. Both entrypoints use the same scope boundary and do not impose a Conductor/Tester/Guardian chain. Delegated children do not orchestrate.
+The Ultra entrypoint requires the current trusted runtime/developer instruction **"Proactive multi-agent delegation is active"**. It loads the skill for suitable repository work while simple tasks remain in the host. Text saying `ultra`, screenshots, permissions, saved settings and past usage are not activation. Both entrypoints use the same planner-led selection: Conductor assesses multi-role work, the host dispatches the necessary roles, and no fixed Tester/Reviewer/Guardian chain is imposed. Delegated children do not orchestrate.
 
 Run `python /absolute/path/to/CODEX_HOME/skills/codex-native-orchestrator/scripts/install_activation.py --apply` to merge the marked personal AGENTS.md entrypoint, preserving other guidance. Omit `--apply` for a read-only check. It creates no digest, backup receipt or log.
 
@@ -132,7 +136,7 @@ Run `python /absolute/path/to/CODEX_HOME/skills/codex-native-orchestrator/script
 
 ### ZCode role orchestration
 
-The [ZCode package](zcode/README.md) retains seven custom roles plus built-in Explore and general-purpose, all using **Gemini 3.8 Flash / high**. The host plans, implements and chooses one focused checking owner. Test authors, test execution and additional specialist reviews are explicit-request-only.
+The [ZCode package](zcode/README.md) retains seven custom roles plus built-in Explore and general-purpose, all using **Gemini 3.8 Flash / high**. The host acts as planner, selects any roles needed for concrete in-scope questions, and chooses one owner per check. It may select test or specialist roles without user naming, while minimizing extra tests and avoiding repeated review.
 
 The installer merges marked guidance, preserves surrounding personal rules and creates no digest or backup receipt. Supply your own provider/model identifier; set built-in role models in ZCode settings. Document-plugin roles are outside this coding workflow.
 

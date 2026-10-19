@@ -1,24 +1,25 @@
-# Minimal role routing
+# Planner-led role selection
 
-Roles are available capabilities, not mandatory stages. Native skill invocation or trusted Ultra activation authorizes useful decomposition of the requested work, not testing or extra assurance. Keep small work in the host. Do not split a task merely to use more models.
+Once this skill is activated, conductor evaluates a multi-role task and selects any roles needed to complete it. The host dispatches that plan; children do not delegate. Simple work and root-only stay with the host. User naming of individual roles is not required. Explicit no-tests, read-only and other user constraints take precedence.
 
-| Work actually needed | Role |
+Choose a useful subset, never the whole catalog by default. Each specialist must address a concrete question that matters to the requested result; no role is added just because the task is large or "important". State the reason briefly in the existing plan, with no extra forms or logs.
+
+| Concrete need | Role |
 | --- | --- |
-| A complex task needs a bounded implementation plan | conductor, once; otherwise host plans |
+| Assess an orchestrated task, its dependencies and necessary roles | conductor, once; update the same plan as facts change |
 | Relevant source/call path is unknown | explorer; scout for exact factual retrieval |
-| The implementation depends on an unknown external API fact | researcher |
+| An implementation decision depends on an unknown external API fact | researcher |
 | Semantic implementation within agreed paths | worker |
-| Exact mechanical edit with a known recipe | mechanic |
-| The single focused result inspection | reviewer or host, not both |
-| A concrete defect has an unclear cause | debugger only if diagnosis is part of the authorized work; no automatic retry-count trigger |
+| An exact mechanical edit with a known recipe | mechanic |
+| Compare the result with requirements and relevant callers | reviewer or host, one owner |
+| A concrete defect has an unclear cause | debugger; no retry-count trigger |
+| A consequential design tradeoff remains unresolved | design_critic before implementation |
+| A disputed finding materially changes the implementation or delivery decision | finding_validator, on that finding only |
+| A distinct, consequential acceptance question remains after ordinary inspection | guardian, on that question only; no blanket second review |
+| An important behavior needs a targeted check and existing tests lack that case | test_author, only the missing case |
+| An important behavior cannot be resolved from inspection or existing observations | tester, the smallest relevant existing test or reproduction |
+| A necessary check has an exact bounded command list | check_runner instead of a second tester on the same commands |
 
-The following require an explicit user request for that specialist activity:
+Prefer no extra tests when inspection is sufficient. Prefer existing targeted tests over writing new ones. Select test_author only for a demonstrated gap; it does not imply a mandatory tester/reviewer/Guardian chain. Do not run suites, build matrices, benchmarks or experiments by default. Stop when the planned question is resolved. Reuse unaffected results after repairs.
 
-- `design_critic`: a separate design review.
-- `finding_validator`: an additional adjudication of a specific disputed finding.
-- `guardian`: an additional final review; no isolated evidence controller or hash packet.
-- `test_author`: write only the tests requested by the user.
-- `tester`: run only the tests requested by the user.
-- `check_runner`: execute only a user-requested command list; no automatic test/build phase or log collection.
-
-If a bounded scout/mechanic task becomes ambiguous, return the specific question and partial result to the host. The host resolves it within the existing plan; do not automatically spawn an escalation chain. Do not substitute role models.
+If a bounded task becomes ambiguous, return the specific question and partial result to the host. Update the current plan, then select a different role only if it addresses the new concrete need. Do not silently substitute role models or repeat an already completed investigation.

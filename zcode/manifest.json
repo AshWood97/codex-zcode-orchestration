@@ -1,5 +1,5 @@
 {
-  "package_version": "4.0.0",
+  "package_version": "4.1.0",
   "custom_roles": [
     "code-reviewer",
     "debugger",
@@ -26,13 +26,8 @@
     "repair_if_needed",
     "deliver"
   ],
-  "explicit_request_only": [
-    "test-author",
-    "test-verifier",
-    "design-critic",
-    "finding-validator"
-  ],
   "inspection_owner": "host_or_code-reviewer",
-  "automatic_tests": false,
-  "automatic_hashes": false
+  "automatic_hashes": false,
+  "role_selection": "host-planner-selects-any-needed-role-within-user-scope",
+  "testing_policy": "minimal-targeted-only-for-important-unresolved-behavior"
 }

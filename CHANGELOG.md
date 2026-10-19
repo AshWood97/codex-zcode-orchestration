@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.0 — 2026-10-19
+
+- Let Conductor assess multi-role tasks and select any needed roles; the host dispatches the plan. ZCode's host performs the same planning role. Individual specialists no longer require the user to name them.
+- Keep extra testing minimal: inspect first, reuse results, prefer existing targeted cases and write tests only for concrete important gaps. Respect explicit no-tests/read-only instructions.
+- Select design criticism, finding validation or Guardian only for distinct material questions; do not reinstate full-role pipelines, duplicate review, hash machinery or extra process artifacts.
+
+
 ## 4.0.0 — 2026-10-19
 
 - Make both Native entrypoints and ZCode follow plan → implement → one focused inspection → repair concrete issues or deliver.

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "package_version": "4.0.0",
+  "package_version": "4.1.0",
   "package_id": "codex-native-orchestrator",
   "skill": {
     "entry": ".agents/skills/codex-native-orchestrator/SKILL.md",
@@ -16,7 +16,7 @@
       "model": "gpt-6.1-sol",
       "reasoning_effort": "max",
       "sandbox_mode": "read-only",
-      "automatic": false,
+      "automatic": true,
       "requires_explicit_request": false
     },
     "explorer": {
@@ -45,21 +45,21 @@
       "reasoning_effort": "xhigh",
       "sandbox_mode": "read-only",
       "automatic": false,
-      "requires_explicit_request": true
+      "requires_explicit_request": false
     },
     "test_author": {
       "model": "gpt-6.1-sol",
       "reasoning_effort": "max",
       "sandbox_mode": "workspace-write",
       "automatic": false,
-      "requires_explicit_request": true
+      "requires_explicit_request": false
     },
     "tester": {
       "model": "gpt-6.1-sol",
       "reasoning_effort": "max",
       "sandbox_mode": "workspace-write",
       "automatic": false,
-      "requires_explicit_request": true
+      "requires_explicit_request": false
     },
     "reviewer": {
       "model": "gpt-6.1-sol",
@@ -73,7 +73,7 @@
       "reasoning_effort": "max",
       "sandbox_mode": "read-only",
       "automatic": false,
-      "requires_explicit_request": true
+      "requires_explicit_request": false
     },
     "debugger": {
       "model": "gpt-6-astra",
@@ -87,7 +87,7 @@
       "reasoning_effort": "xhigh",
       "sandbox_mode": "read-only",
       "automatic": false,
-      "requires_explicit_request": true
+      "requires_explicit_request": false
     },
     "scout": {
       "model": "gpt-6-luna",
@@ -108,7 +108,7 @@
       "reasoning_effort": "max",
       "sandbox_mode": "workspace-write",
       "automatic": false,
-      "requires_explicit_request": true
+      "requires_explicit_request": false
     }
   },
   "max_concurrency": 4,
@@ -139,12 +139,13 @@
   "quality_policy": {
     "inspection_owner": "host_or_one_reviewer",
     "review_is_read_only": true,
-    "tests": "explicit-user-request-only",
-    "additional_gates": "explicit-user-request-only",
+    "tests": "minimal-targeted-only-for-important-unresolved-behavior",
+    "additional_gates": "planner-selected-distinct-consequential-question-only",
     "hashes": "only-user-requested-publication-deduplication-cache-or-known-digest-rejection",
     "repeat_completed_work": false,
     "extra_artifacts": false,
-    "scope_expansion": "ask-user-before-action"
+    "scope_expansion": "ask-user-before-action",
+    "role_selection": "conductor-selects-any-needed-role-within-user-scope"
   },
   "workflow": [
     "plan",
