@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import datetime
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -52,16 +50,8 @@ def configure(codex_home: Path, apply: bool = False) -> dict:
     desired = merge_block(original, block)
     changed = original != desired
     result = {'ok': not changed, 'ultra_ready': not changed, 'changed': changed,
-              'path': str(target), 'skill_path': str(skill_dir / 'SKILL.md'),
-              'before_hash': hashlib.sha256(original).hexdigest(),
-              'after_hash': hashlib.sha256(desired).hexdigest()}
+              'path': str(target), 'skill_path': str(skill_dir / 'SKILL.md')}
     if apply and changed:
-        stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-        backup = codex_home / 'backups/codex-native-activation' / stamp
-        backup.mkdir(parents=True, exist_ok=False)
-        if target.exists():
-            (backup / 'AGENTS.md').write_bytes(original)
-        (backup / 'receipt.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
         fd, temporary = tempfile.mkstemp(prefix='.AGENTS.', dir=codex_home)
         try:
             with os.fdopen(fd, 'wb') as handle:
@@ -74,14 +64,14 @@ def configure(codex_home: Path, apply: bool = False) -> dict:
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
-        result.update(ok=True, ultra_ready=True, backup=str(backup))
+        result.update(ok=True, ultra_ready=True)
     return result
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--codex-home', type=Path, default=Path(os.environ.get('CODEX_HOME', Path.home() / '.codex')))
-    parser.add_argument('--apply', action='store_true', help='Back up and merge only the marked activation block; default checks without writing')
+    parser.add_argument('--apply', action='store_true', help='Merge only the marked activation block; default checks without writing')
     args = parser.parse_args(argv)
     try:
         result = configure(args.codex_home, apply=args.apply)

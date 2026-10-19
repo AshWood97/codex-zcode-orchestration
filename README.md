@@ -1,8 +1,8 @@
 # Codex + ZCode Orchestration / Codex 与 ZCode 多角色编排
 
-Quality-first role orchestration for Codex and ZCode · Native agents · External providers · Harness delegation
+Plan → implement → inspect → fix or deliver · Native agents · External providers · Harness delegation
 
-Codex 与 ZCode 的代码质量优先编排 · 原生 agent · 外部 provider · 独立 harness
+Codex 与 ZCode：计划 → 执行 → 检查 → 有问题修改、没问题放行 · 原生 agent · 外部 provider · 独立 harness
 
 [中文](#中文) · [English](#english)
 
@@ -12,7 +12,7 @@ Codex 与 ZCode 的代码质量优先编排 · 原生 agent · 外部 provider �
 
 | Skill | 用途 |
 | --- | --- |
-| [Codex Native Orchestration](.agents/skills/codex-native-orchestrator/SKILL.md) | 使用 Codex 原生 agent 协调任务；需要批量、依赖或跨轮恢复时使用持久化 runner。 |
+| [Codex Native Orchestration](.agents/skills/codex-native-orchestrator/SKILL.md) | 用原生角色按需完成计划、实现和一次针对需求的检查；默认不跑测试或额外 gate。 |
 | [Codex External Provider](.agents/skills/codex-external-provider/SKILL.md) | 在**会话启动时**已配置外部 Responses API provider 的前提下，检查当前会话及原生 agent 的路由。 |
 | [Codex Harness Bridge](.agents/skills/codex-harness-bridge/SKILL.md) | 把一个有明确边界的任务交给已配置的独立编码 CLI，并由当前 Codex 会话检查结果。 |
 
@@ -33,61 +33,49 @@ Codex 与 ZCode 的代码质量优先编排 · 原生 agent · 外部 provider �
 
 建议使用 Python 3.11 或更新版本；External 的预检及测试要求至少 3.11。Native 的 skill 安装和命名 agent 配置是两步：安装器只安装 skill；按下方说明部署固定子代理角色后，再启动新会话。当前 Codex 主会话只负责协调，不属于技能配置的角色映射；调用技能不会改变用户选择的主会话模型。External 的 provider、模型目录和凭据只放在个人配置及环境变量中，参照[示例](.agents/skills/codex-external-provider/examples/user-config.example.toml)和[设置说明](.agents/skills/codex-external-provider/references/provider-setup.md)。Harness Bridge 的私有配置从[示例](.agents/skills/codex-harness-bridge/config.example.json)创建，参照[设置说明](.agents/skills/codex-harness-bridge/references/setup.md)；仅安装要用的 CLI。
 
-#### Native 固定编排与部署
+#### Native 角色与流程
+
+默认流程是 **充分考虑的计划 → 最小实现 → 一次针对需求的检查 → 有问题修改、没问题放行**。简单任务留在主会话；复杂任务只分派确实需要完成的部分。检查由主会话或一个 reviewer 负责，不重复做同一轮检查；修复后只看修复和直接影响。用户只要求 Review 时保持只读。
 
 | 角色 | 模型 | 推理强度 |
 | --- | --- | --- |
-| Sol 主流程：conductor、explorer、researcher、worker、test_author、tester、reviewer、finding_validator | `gpt-6.1-sol` | `max` |
-| Luna 明确重复工作：scout、mechanic、check_runner | `gpt-6-luna` | `max` |
-| Astra 专项与验收：design_critic、debugger、guardian | `gpt-6-astra` | `xhigh` |
+| conductor、explorer、researcher、worker、reviewer、finding_validator、test_author、tester | `gpt-6.1-sol` | `max` |
+| scout、mechanic、check_runner | `gpt-6-luna` | `max` |
+| design_critic、debugger、guardian | `gpt-6-astra` | `xhigh` |
 
-共 14 个角色。默认子智能体也是 Sol/max。明确搜索交给 scout，按既定规则的重复编辑交给 mechanic，预定命令交给 check_runner；遇到歧义分别交回 explorer、worker、tester。Luna 不替代测试覆盖判断或最终验收。重要设计才调用 design_critic；同一问题两次修复失败或因果难明时调用 debugger。
+保留 14 个角色的模型，角色不是必须跑完的流水线。Conductor 按需规划；test_author、tester、check_runner、guardian、design_critic、finding_validator **仅在用户明确要求对应活动时使用**。默认一个实现者，最多按需四个子智能体。不因“更稳妥”增加角色、全量 review、测试、构建、A/B、兼容层、防御包装或未来抽象。
 
-Conductor 是每次授权运行的独立启动阶段。测试设计、测试执行和代码审查相互独立；实质发现使用 confirmed/refuted/unresolved 三态核验。Tester/check_runner 可以在隔离副本生成缓存和构建输出，但不能改变受跟踪源码、测试或 Git 元数据，也不整合输出。每个 writer 仍需下游 Sol Tester 验证。Reviewer 通过后运行隔离的 Guardian；结论绑定准确的代码、测试和配置版本，修复后更新证据再验收，同一版本不能反复要求改判。最多五轮修复。模型或配置不符时停止派遣。详见[质量流程](.agents/skills/codex-native-orchestrator/references/quality-workflow.md)及[路由规则](.agents/skills/codex-native-orchestrator/references/routing.md)。
+默认禁止 hash/checksum/指纹/签名与额外产物。仅当用户明确要求发布校验、去重、缓存命中或对照已知摘要做拒绝，且结果实际用于该操作时才计算。未授权的额外动作先问一句“我想加 X，因为 Y，是否允许？”，等答复再做。详见[执行规则](.agents/skills/codex-native-orchestrator/SKILL.md)。
 
-把本仓库 `.agents/skills/codex-native-orchestrator/roles/*.toml` 的 14 个配置放入个人 `CODEX_HOME/agents`，并将清单中的 `config_values` 合并到个人 `CODEX_HOME/config.toml`。这些值仅配置子代理，不包含全局 `model` 或 `model_reasoning_effort`。不要覆盖配置文件中的其他设置或追加重复的 TOML 键。从本仓库检出目录运行检查命令；已运行的会话和 agent 不会自动切换模型。
+将 `.agents/skills/codex-native-orchestrator/roles/*.toml` 放到个人 `CODEX_HOME/agents`，把清单中的 `config_values` 合并到 `CODEX_HOME/config.toml`，保留其他设置和用户选择的主模型。不要追加重复 TOML 键。开始新会话加载更新后的提示词。
 
-```sh
-python3 .agents/skills/codex-native-orchestrator/scripts/codex_native_orchestrator.py --repo "$PWD" doctor
-```
+#### 技能与 Ultra 入口
 
-Native 的独立 Codex CLI 会沿用显式代理环境变量；在 macOS 上，缺少这些变量时自动读取已启用的系统 HTTP/HTTPS 代理。输出留档和超时、中断清理详见[恢复说明](.agents/skills/codex-native-orchestrator/references/runner-and-recovery.md)。
+从技能菜单选择 **Codex Native Orchestration** 或直接用 `$codex-native-orchestrator` 加任务，手动启用。普通/Max 不按任务内容自动启用。
 
-#### Ultra 自动入口
+Ultra 自动入口仅以当前受信 runtime/developer 的 **“Proactive multi-agent delegation is active”** 指令为准；适合分工的项目任务自动加载技能，简单任务仍留在主会话。文字 `ultra`、截图、完整权限和历史使用均不算启用信号。主会话模型和深度不变。两种入口使用完全相同的执行边界，不强制启动 Conductor、Tester 或 Guardian。
 
-选择 Codex 的 **Ultra** 思考模式后，适合分工的复杂项目任务会自动进入这套编排，无需再手动选择技能。普通模式和 Max 仍通过技能菜单或 `$codex-native-orchestrator` 手动启动；简单 Ultra 问题仍由主会话处理。主会话保留用户选择的 Ultra，固定模型和思考深度仅用于各个子角色。
-
-安装技能和 14 个角色后，运行下面的命令，将带标记的入口规则合并到个人 `CODEX_HOME/AGENTS.md`。脚本保留其他说明，更新前备份，并使用实际安装路径；不指定 `--apply` 时只检查。
+安装后可将带标记的入口合并到个人 `CODEX_HOME/AGENTS.md`，保留其他规则；不加 `--apply` 时只显示是否需要更新：
 
 ```sh
 python /absolute/path/to/CODEX_HOME/skills/codex-native-orchestrator/scripts/install_activation.py --apply
 ```
 
-启动新会话后生效。自动入口以当前运行时的主动委派指令为准，不以文档中的 `ultra` 字样或保存的默认设置为准。可用 `codex -c 'model_reasoning_effort="ultra"' debug prompt-input` 检查当前客户端发出的模式指令；该命令无需模型调用。
+安装脚本不计算摘要，不生成备份凭据或日志。
 
-Windows 默认安装的新任务会把隔离代码副本放在 `~/Documents/Codex/NativeOrchestrator/workspaces/RUN_ID`，以供只读沙箱访问；私有状态与日志仍位于 `CODEX_HOME/astra-orchestrator`。历史运行路径保持可读。
+**v4 移除了旧持久 CLI runner、哈希证据机制和自动最终 gate**，以及只服务于这些机制的 schema/测试。旧 `native-begin`、`native-gate`、`run`、`revise-run` 等控制器命令不再提供；工作直接由原生 agent 工具协调。旧运行记录不改动，续接时复用已有计划和结论，不迁移、不重复执行，也不默认生成新账本。
 
 ### ZCode 角色编排
 
-[ZCode 安装说明](zcode/README.md)提供七个自定义角色：code-reviewer、test-verifier、design-critic、test-author、finding-validator、debugger、docs-researcher。配合内置 Explore 和 general-purpose，共九个代码角色，统一使用 **Gemini 3.8 Flash / high**。文档插件自带的 visual-judge 不属于这套代码角色。
+[ZCode 安装说明](zcode/README.md)提供七个自定义角色，配合 Explore 和 general-purpose，模型保持 **Gemini 3.8 Flash / high**。主 Agent 采用相同的计划、执行、检查流程；test-author、test-verifier 和额外专项审查仅在用户明确要求时调用。
 
-安装器默认只预览，实际安装时备份旧文件、合并带标记的 AGENTS.md 工作流，并保留个人规则。模型的 provider 标识由使用者提供，不分发本机账号状态。两个内置角色在 ZCode 设置中选择相同模型。ZCode 的隔离、版本绑定和修复上限由主 Agent 按规则执行；它没有复用 Codex 的持久控制器或独立 Guardian 进程。
+安装器合并带标记的工作流并保留个人规则，不计算前后 hash 或生成备份凭据。模型的 provider 标识由使用者提供；内置角色仍在 ZCode 设置中配置。文档插件角色不属于本次代码编排。
 
 ### 公开仓库与验证范围
 
 本仓库只包含源码、文档、占位符示例和测试。不要提交 API key、真实 provider URL、个人 `config.toml`、私有模型目录、任务 brief、运行日志或报告。External 的预检需要可信的运行时 provider/model 身份；配置检查本身不证明远端请求的实际路由。Harness Bridge 的适配器测试使用模拟 CLI，不代表所有真实 CLI 版本或服务端都已验证。DeepSeek Harness 仍是实验性支持。
 
-本轮新增角色、独立测试、证据修订和节省额度的分层路由；[变更记录](CHANGELOG.md)列出完整内容。控制器测试和安装测试不代表模型质量或额度节省的 A/B 实测；参照[评估协议](.agents/skills/codex-native-orchestrator/references/evaluation.md)。
-
-运行现有测试：
-
-```sh
-for skill in codex-native-orchestrator codex-external-provider codex-harness-bridge; do
-  PYTHONDONTWRITEBYTECODE=1 python3.11 -B -m unittest discover \
-    -s ".agents/skills/$skill/tests" -p 'test_*.py' -q || exit 1
-done
-python3.11 -B -m unittest discover -s zcode/tests -p 'test_*.py' -q
-```
+Native/ZCode 的日常任务和仓库改动不再自动触发测试矩阵。现有安装器测试保留供维护者明确选择执行；External Provider 与 Harness Bridge 的原有 CI 仅在它们自身路径发生变化时运行。见[变更记录](CHANGELOG.md)。
 
 ## English
 
@@ -95,7 +83,7 @@ This repository contains three Codex skills that are **installed and selected in
 
 | Skill | Purpose |
 | --- | --- |
-| [Codex Native Orchestration](.agents/skills/codex-native-orchestrator/SKILL.md) | Coordinate native Codex agents, using the persistent runner when task dependencies, batches, or recovery require it. |
+| [Codex Native Orchestration](.agents/skills/codex-native-orchestrator/SKILL.md) | Plan, implement and inspect scoped work with native roles; no automatic tests or extra gates. |
 | [Codex External Provider](.agents/skills/codex-external-provider/SKILL.md) | Check routing for a Codex session and native agents **started with** a configured external Responses API provider. |
 | [Codex Harness Bridge](.agents/skills/codex-harness-bridge/SKILL.md) | Send one bounded job to a configured coding CLI and review its evidence from the current Codex session. |
 
@@ -116,57 +104,43 @@ The installer places each directory in `$CODEX_HOME/skills/` (default `~/.codex/
 
 Python 3.11 or newer is recommended; External preflight and tests require at least 3.11. Installing the Native skill and configuring named agents are separate steps: the installer adds the skill, while the deployment below installs the fixed subagent roles. The current Codex session coordinates work but is not one of the skill's named roles; invoking the skill does not change its selected model. Start a new session after deployment. Keep External provider settings, model catalogs, and credentials in user configuration and environment variables, using the [example](.agents/skills/codex-external-provider/examples/user-config.example.toml) and [setup guide](.agents/skills/codex-external-provider/references/provider-setup.md). Create a private Harness Bridge configuration from its [example](.agents/skills/codex-harness-bridge/config.example.json) and [setup guide](.agents/skills/codex-harness-bridge/references/setup.md); install only the CLIs you plan to use.
 
-#### Native fixed roles and deployment
+#### Native roles and workflow
 
-| Role | Model | Reasoning effort |
+Use **plan → implement → inspect once → fix concrete issues or deliver**. Understand the requirements and relevant source before editing. Keep simple work in the host and delegate only necessary parts of the requested implementation. One owner, either the host or reviewer, inspects the result and directly affected callers. After a repair, inspect that repair and its effects; reuse unchanged conclusions. Review-only requests never authorize edits.
+
+| Roles | Model | Effort |
 | --- | --- | --- |
-| Sol main workflow: conductor, explorer, researcher, worker, test_author, tester, reviewer, finding_validator | `gpt-6.1-sol` | `max` |
-| Luna bounded repetitive work: scout, mechanic, check_runner | `gpt-6-luna` | `max` |
-| Astra specialists and final gate: design_critic, debugger, guardian | `gpt-6-astra` | `xhigh` |
+| conductor, explorer, researcher, worker, reviewer, finding_validator, test_author, tester | `gpt-6.1-sol` | `max` |
+| scout, mechanic, check_runner | `gpt-6-luna` | `max` |
+| design_critic, debugger, guardian | `gpt-6-astra` | `xhigh` |
 
-There are 14 roles; the default subagent is also Sol/max. Scout collects bounded facts, mechanic follows an explicit edit recipe, and check_runner executes predefined commands. Ambiguity escalates to explorer, worker, or tester respectively. Luna does not replace coverage judgment or final acceptance. Use design_critic for consequential design decisions and debugger for difficult causal diagnosis or two failed fixes of the same issue.
+All 14 role models are preserved. Roles are capabilities, not required stages. Conductor is optional planning support. Test authoring/execution, command running and additional design/finding/Guardian reviews require an **explicit user request for that activity**. Default to one writer, at most four children as needed, and no automatic tests, builds, experiments, extra gates, defensive wrappers or future abstractions.
 
-Conductor runs once at startup. Test authoring, execution, and review remain independent, with confirmed/refuted/unresolved finding adjudication. Tester/check_runner may generate outputs in disposable clones while tracked code, tests and Git metadata remain unchanged; no output is integrated. Every writer still requires downstream Sol Tester verification. Reviewer approval precedes the isolated Guardian gate. Evidence binds the exact candidate, tests and configuration; repairs refresh that evidence, and an unchanged revision cannot seek another verdict. Repairs are bounded to five waves. Configuration drift stops dispatch. See the [quality workflow](.agents/skills/codex-native-orchestrator/references/quality-workflow.md) and [routing rules](.agents/skills/codex-native-orchestrator/references/routing.md).
+Do not calculate hashes, checksums, fingerprints or signatures unless the user explicitly requests published checksums, deduplication, cache-hit decisions or known-digest rejection and the result serves that operation. Do not create extra files or logs for traceability. Ask before a scope-expanding action, then wait. See the [skill](.agents/skills/codex-native-orchestrator/SKILL.md).
 
-Place the 14 `.agents/skills/codex-native-orchestrator/roles/*.toml` profiles in your personal `CODEX_HOME/agents`, and merge the manifest's `config_values` into your personal `CODEX_HOME/config.toml`. These values configure subagents only; they do not include the global `model` or `model_reasoning_effort`. Preserve unrelated settings and avoid duplicate TOML keys. Run the check from this repository checkout. Running sessions and agents do not switch models automatically.
+Place the role TOMLs in personal `CODEX_HOME/agents` and merge the manifest's `config_values` into personal `CODEX_HOME/config.toml`. Preserve unrelated settings and the user's host model; avoid duplicate keys. Start a new session to load updated prompts.
 
-#### Manual invocation and Ultra entrypoint
+#### Manual and Ultra entrypoints
 
-Native orchestration keeps `allow_implicit_invocation: false`. Select **Codex Native Orchestration** from the skill/slash menu (`/codex` filters the list), or invoke `$codex-native-orchestrator` with a task, to start it manually. Ordinary and Max task matching do not start the workflow.
+Keep `allow_implicit_invocation: false`. Select **Codex Native Orchestration** in the skill menu or directly invoke `$codex-native-orchestrator` with a task. Ordinary/Max task matching does not activate it.
 
-After installing the skill and 14 roles, run `python /absolute/path/to/CODEX_HOME/skills/codex-native-orchestrator/scripts/install_activation.py --apply`. It backs up personal `CODEX_HOME/AGENTS.md` and merges only the marked [activation block](.agents/skills/codex-native-orchestrator/references/activation.md), resolving the real installed skill path and preserving unrelated guidance. Omit `--apply` for a read-only check. Start a new session after installation.
+The Ultra entrypoint requires the current trusted runtime/developer instruction **"Proactive multi-agent delegation is active"**. It loads the skill for suitable repository work while simple tasks remain in the host. Text saying `ultra`, screenshots, permissions, saved settings and past usage are not activation. Both entrypoints use the same scope boundary and do not impose a Conductor/Tester/Guardian chain. Delegated children do not orchestrate.
 
-Select **Ultra** in Codex and send a suitable complex repository task normally: the entrypoint automatically loads this workflow, without another skill selection. The host retains the selected Ultra mode; fixed role models and efforts apply only to delegated roles. Only the latest trusted runtime/developer instruction announcing active proactive delegation authorizes this entrypoint. Full access, saved effort defaults, screenshots, and earlier skill use are not signals. Simple Ultra tasks remain in the host session. The current client's mode instructions can be inspected without a model call using `codex -c 'model_reasoning_effort="ultra"' debug prompt-input`.
+Run `python /absolute/path/to/CODEX_HOME/skills/codex-native-orchestrator/scripts/install_activation.py --apply` to merge the marked personal AGENTS.md entrypoint, preserving other guidance. Omit `--apply` for a read-only check. It creates no digest, backup receipt or log.
 
-Both entrypoints use the same custom roles and controller flow, with one startup per run. Delegated children do not activate nested orchestration. Existing unfinished tasks resume their recorded run; independent tasks re-evaluate the entrypoints.
-
-```sh
-python3 .agents/skills/codex-native-orchestrator/scripts/codex_native_orchestrator.py --repo "$PWD" doctor
-```
-
-The independent Native Codex CLI honors explicit proxy environment settings. On macOS, enabled system HTTP/HTTPS proxies fill absent proxy settings. See the [recovery guide](.agents/skills/codex-native-orchestrator/references/runner-and-recovery.md) for private transcripts and timeout/interruption cleanup.
+**Version 4 removes the old persistent CLI runner, hash evidence machinery and automatic final gate**, together with their dedicated schemas/tests. The old controller commands, including `native-begin`, `native-gate`, `run` and `revise-run`, are no longer available. Coordinate work through native agent tools. Historical run files remain untouched; reuse useful plans and results without a migration layer or replacement ledger.
 
 ### ZCode role orchestration
 
-The [ZCode installation guide](zcode/README.md) includes seven custom roles: code-reviewer, test-verifier, design-critic, test-author, finding-validator, debugger and docs-researcher. Together with built-in Explore and general-purpose, all nine code roles use **Gemini 3.8 Flash / high**. Document-plugin visual-judge agents are outside this code workflow.
+The [ZCode package](zcode/README.md) retains seven custom roles plus built-in Explore and general-purpose, all using **Gemini 3.8 Flash / high**. The host plans, implements and chooses one focused checking owner. Test authors, test execution and additional specialist reviews are explicit-request-only.
 
-The installer previews by default, backs up replacements, and merges a marked AGENTS.md workflow while preserving personal guidance. Users supply their own provider identifier; account state is not distributed. Set the two built-in agents to the same model in ZCode settings. ZCode relies on its host agent to enforce isolation, evidence binding and repair limits; it does not reuse Codex's persistent controller or isolated Guardian process.
+The installer merges marked guidance, preserves surrounding personal rules and creates no digest or backup receipt. Supply your own provider/model identifier; set built-in role models in ZCode settings. Document-plugin roles are outside this coding workflow.
 
 ### Public repository and verification limits
 
 This repository contains only source code, documentation, placeholder examples, and tests. Do not commit API keys, real provider URLs, personal `config.toml`, private model catalogs, task briefs, run logs, or reports. External preflight requires trusted runtime provider/model identity; a configuration check alone does not prove remote request routing. Harness Bridge adapter tests use stub CLIs and do not establish compatibility with every live CLI version or service. DeepSeek Harness support remains experimental.
 
-See the [changelog](CHANGELOG.md) for the role, quality-workflow and routing upgrades. Controller and installation tests do not establish model quality or measured quota savings; use the [evaluation protocol](.agents/skills/codex-native-orchestrator/references/evaluation.md).
-
-Run the existing tests:
-
-```sh
-for skill in codex-native-orchestrator codex-external-provider codex-harness-bridge; do
-  PYTHONDONTWRITEBYTECODE=1 python3.11 -B -m unittest discover \
-    -s ".agents/skills/$skill/tests" -p 'test_*.py' -q || exit 1
-done
-python3.11 -B -m unittest discover -s zcode/tests -p 'test_*.py' -q
-```
+Native/ZCode tasks and repository changes do not automatically trigger test matrices. Existing installer tests remain available for an explicitly chosen maintenance run. External Provider and Harness Bridge retain CI only for changes to their own paths. See the [changelog](CHANGELOG.md).
 
 ## License
 

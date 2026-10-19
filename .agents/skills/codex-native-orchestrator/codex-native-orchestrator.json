@@ -1,17 +1,14 @@
 {
   "schema_version": 1,
-  "package_version": "3.3.0",
+  "package_version": "4.0.0",
   "package_id": "codex-native-orchestrator",
   "skill": {
     "entry": ".agents/skills/codex-native-orchestrator/SKILL.md",
     "references": [
-      ".agents/skills/codex-native-orchestrator/references/routing.md",
-      ".agents/skills/codex-native-orchestrator/references/delegation-contract.md",
-      ".agents/skills/codex-native-orchestrator/references/guardian-gate.md",
-      ".agents/skills/codex-native-orchestrator/references/runner-and-recovery.md",
-      ".agents/skills/codex-native-orchestrator/references/evidence-and-review.md",
+      ".agents/skills/codex-native-orchestrator/references/activation.md",
       ".agents/skills/codex-native-orchestrator/references/quality-workflow.md",
-      ".agents/skills/codex-native-orchestrator/references/evaluation.md"
+      ".agents/skills/codex-native-orchestrator/references/routing.md",
+      ".agents/skills/codex-native-orchestrator/references/delegation-contract.md"
     ]
   },
   "roles": {
@@ -19,115 +16,112 @@
       "model": "gpt-6.1-sol",
       "reasoning_effort": "max",
       "sandbox_mode": "read-only",
-      "automatic": true,
+      "automatic": false,
       "requires_explicit_request": false
     },
     "explorer": {
       "model": "gpt-6.1-sol",
       "reasoning_effort": "max",
-      "sandbox_mode": "read-only"
+      "sandbox_mode": "read-only",
+      "automatic": false,
+      "requires_explicit_request": false
     },
     "researcher": {
       "model": "gpt-6.1-sol",
       "reasoning_effort": "max",
-      "sandbox_mode": "read-only"
+      "sandbox_mode": "read-only",
+      "automatic": false,
+      "requires_explicit_request": false
     },
     "worker": {
       "model": "gpt-6.1-sol",
       "reasoning_effort": "max",
-      "sandbox_mode": "workspace-write"
+      "sandbox_mode": "workspace-write",
+      "automatic": false,
+      "requires_explicit_request": false
     },
     "design_critic": {
       "model": "gpt-6-astra",
       "reasoning_effort": "xhigh",
-      "sandbox_mode": "read-only"
+      "sandbox_mode": "read-only",
+      "automatic": false,
+      "requires_explicit_request": true
     },
     "test_author": {
       "model": "gpt-6.1-sol",
       "reasoning_effort": "max",
-      "sandbox_mode": "workspace-write"
+      "sandbox_mode": "workspace-write",
+      "automatic": false,
+      "requires_explicit_request": true
     },
     "tester": {
       "model": "gpt-6.1-sol",
       "reasoning_effort": "max",
-      "sandbox_mode": "workspace-write"
+      "sandbox_mode": "workspace-write",
+      "automatic": false,
+      "requires_explicit_request": true
     },
     "reviewer": {
       "model": "gpt-6.1-sol",
       "reasoning_effort": "max",
-      "sandbox_mode": "read-only"
+      "sandbox_mode": "read-only",
+      "automatic": false,
+      "requires_explicit_request": false
     },
     "finding_validator": {
       "model": "gpt-6.1-sol",
       "reasoning_effort": "max",
-      "sandbox_mode": "read-only"
+      "sandbox_mode": "read-only",
+      "automatic": false,
+      "requires_explicit_request": true
     },
     "debugger": {
       "model": "gpt-6-astra",
       "reasoning_effort": "xhigh",
-      "sandbox_mode": "read-only"
+      "sandbox_mode": "read-only",
+      "automatic": false,
+      "requires_explicit_request": false
     },
     "guardian": {
       "model": "gpt-6-astra",
       "reasoning_effort": "xhigh",
       "sandbox_mode": "read-only",
-      "automatic": true,
-      "requires_explicit_request": false
+      "automatic": false,
+      "requires_explicit_request": true
     },
     "scout": {
       "model": "gpt-6-luna",
       "reasoning_effort": "max",
-      "sandbox_mode": "read-only"
+      "sandbox_mode": "read-only",
+      "automatic": false,
+      "requires_explicit_request": false
     },
     "mechanic": {
       "model": "gpt-6-luna",
       "reasoning_effort": "max",
-      "sandbox_mode": "workspace-write"
+      "sandbox_mode": "workspace-write",
+      "automatic": false,
+      "requires_explicit_request": false
     },
     "check_runner": {
       "model": "gpt-6-luna",
       "reasoning_effort": "max",
-      "sandbox_mode": "workspace-write"
+      "sandbox_mode": "workspace-write",
+      "automatic": false,
+      "requires_explicit_request": true
     }
   },
   "max_concurrency": 4,
-  "runner_defaults": {
-    "gate_mode": "final",
-    "mode": "hybrid",
-    "decision": "auto",
-    "max_agents": 4,
-    "triggers": [
-      "explicit_dag_batch_resume_persistence_request",
-      "three_or_more_dependent_nodes",
-      "two_or_more_parallel_writers",
-      "cross_turn_recovery"
-    ],
-    "multi_file_is_trigger": false,
-    "overrides": [
-      "runner on",
-      "runner off",
-      "root-only",
-      "max agents N",
-      "read-only"
-    ]
-  },
   "paths": {
     "project_config": ".codex/config.toml",
-    "compatibility_config": ".codex/config.plus.toml",
     "agents_dir": ".codex/agents",
     "skill_dir": ".agents/skills/codex-native-orchestrator",
     "skill_entry": ".agents/skills/codex-native-orchestrator/SKILL.md",
     "manifest": ".agents/skills/codex-native-orchestrator/codex-native-orchestrator.json",
     "references_dir": ".agents/skills/codex-native-orchestrator/references",
-    "run_state_root": "CODEX_HOME/astra-orchestrator/runs",
     "user_config": "CODEX_HOME/config.toml",
     "user_agents_dir": "CODEX_HOME/agents",
     "user_skill_dir": "CODEX_HOME/skills/codex-native-orchestrator"
-  },
-  "timeouts": {
-    "read_only": 1800,
-    "writer": 3600,
-    "guardian": 900
   },
   "managed_config_keys": [
     "agents.enabled",
@@ -142,26 +136,21 @@
     "agents.default_subagent_reasoning_effort": "max"
   },
   "installation_scope": "global",
-  "deployment": {
-    "config_path": "config.toml",
-    "agents_home": "agents",
-    "skill_home": "~/.agents/skills/codex-native-orchestrator",
-    "agents_source": ".agents/skills/codex-native-orchestrator/roles",
-    "skill_source": ".agents/skills/codex-native-orchestrator"
-  },
   "quality_policy": {
-    "same_issue_debugger_after": 2,
-    "max_repair_waves": 5,
-    "candidate_comparison": "explicit-experiment-only",
-    "findings": [
-      "confirmed",
-      "refuted",
-      "unresolved"
-    ],
-    "luna_routing": {
-      "scout": "bounded factual retrieval; escalate to explorer",
-      "mechanic": "explicit transformation recipe; escalate to worker",
-      "check_runner": "predetermined commands; escalate to tester"
-    }
-  }
+    "inspection_owner": "host_or_one_reviewer",
+    "review_is_read_only": true,
+    "tests": "explicit-user-request-only",
+    "additional_gates": "explicit-user-request-only",
+    "hashes": "only-user-requested-publication-deduplication-cache-or-known-digest-rejection",
+    "repeat_completed_work": false,
+    "extra_artifacts": false,
+    "scope_expansion": "ask-user-before-action"
+  },
+  "workflow": [
+    "plan",
+    "implement",
+    "inspect",
+    "repair_if_needed",
+    "deliver"
+  ]
 }

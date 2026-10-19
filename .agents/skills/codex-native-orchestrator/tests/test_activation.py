@@ -1,5 +1,4 @@
 import importlib.util
-import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -29,7 +28,6 @@ class ActivationTests(unittest.TestCase):
             self.assertEqual((home / 'AGENTS.md').read_bytes(), before)
             report = activation.configure(home, apply=True)
             self.assertTrue(report['ultra_ready'])
-            self.assertEqual(Path(report['backup'], 'AGENTS.md').read_bytes(), before)
             installed = (home / 'AGENTS.md').read_bytes()
             self.assertIn(str((home / 'skills/codex-native-orchestrator/SKILL.md').resolve()).replace('\\', '/').encode(), installed)
             self.assertEqual(installed.count(activation.START.encode()), 1)

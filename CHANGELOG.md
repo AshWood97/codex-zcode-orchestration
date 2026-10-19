@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.0.0 — 2026-10-19
+
+- Make both Native entrypoints and ZCode follow plan → implement → one focused inspection → repair concrete issues or deliver.
+- Preserve role models; remove mandatory Conductor startup, test-author/tester chains, automatic Guardian, repeat-review requirements and fixed repair/escalation waves.
+- Keep testing and additional specialist reviews explicit-request-only. Review-only tasks remain read-only. No speculative abstractions, extra output files or duplicated work.
+- Restrict hashing to explicitly requested published checksums, deduplication, cache decisions or known-digest rejection with an actual consumer.
+- Remove the old Native CLI runner and its hash journals, gate/evidence schemas, dedicated tests and process helper. This is a breaking workflow simplification: use native agent tools and existing chat progress; old controller commands are no longer provided. Historical user run files are not migrated or deleted.
+- Remove automatic hashes and backup receipts from Native activation and ZCode installation. Keep personal guidance outside the managed blocks.
+- Stop automatic Native/ZCode test matrices. Keep the existing External/Harness CI scoped to changes in those packages; installer tests remain manually selectable.
+
+此前版本记录仅为历史，不再描述 v4 的执行规则。
+
 ## 3.3.0 — 2026-10-16
 
 The repository is now **Codex + ZCode Orchestration**, renamed from `codex-three-paths` to `codex-zcode-orchestration`. Existing Codex skill names remain stable. This release combines the local quality-workflow upgrades with the repository's existing Windows support.

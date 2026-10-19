@@ -1,5 +1,4 @@
 import importlib.util
-import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -34,7 +33,7 @@ class InstallTests(unittest.TestCase):
                 self.assertNotIn('__ZCODE_MODEL_ID__', text)
             self.assertEqual(install.configure(home, MODEL, apply=True)['changed_files'], [])
 
-    def test_modified_role_requires_explicit_replacement_and_is_backed_up(self):
+    def test_modified_role_requires_explicit_replacement(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp).resolve()
             install.configure(home, MODEL, apply=True)
@@ -46,10 +45,6 @@ class InstallTests(unittest.TestCase):
                 install.configure(home, MODEL, apply=True)
             self.assertEqual(role.read_bytes(), b'My customized reviewer\n')
             result = install.configure(home, MODEL, apply=True, replace_existing=True)
-            backup = Path(result['backup'])
-            records = json.loads((backup / 'manifest.json').read_text())
-            record = next(r for r in records if r['path'] == str(role))
-            self.assertEqual((backup / record['backup']).read_bytes(), b'My customized reviewer\n')
 
     def test_marked_update_preserves_prefix_and_suffix(self):
         old = b'prefix\r\n' + install.START + b'\nold\n' + install.END + b'\r\nsuffix'

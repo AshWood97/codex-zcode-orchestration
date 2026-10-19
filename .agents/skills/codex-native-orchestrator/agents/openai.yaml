@@ -1,7 +1,7 @@
 interface:
   display_name: "Codex Native Orchestration"
-  short_description: "Coordinate native Codex agents and persistent runs"
-  default_prompt: "Use $codex-native-orchestrator to route complex repository work across native Codex agents and recoverable runs."
+  short_description: "Plan, implement and inspect scoped changes"
+  default_prompt: "Use $codex-native-orchestrator to plan, implement and inspect the requested change, fixing concrete issues and delivering the minimum working result."
 
 policy:
   allow_implicit_invocation: false

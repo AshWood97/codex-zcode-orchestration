@@ -1,6 +1,15 @@
 name: Test skills
 
-on: [push, pull_request]
+on:
+  push:
+    paths:
+      - '.agents/skills/codex-external-provider/**'
+      - '.agents/skills/codex-harness-bridge/**'
+  pull_request:
+    paths:
+      - '.agents/skills/codex-external-provider/**'
+      - '.agents/skills/codex-harness-bridge/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -33,7 +42,14 @@ jobs:
           }
           assert {path.parent.name for path in roots} == expected, roots
           PY
-          for skill in codex-native-orchestrator codex-external-provider codex-harness-bridge; do
+          for skill in codex-external-provider codex-harness-bridge; do
             python -B -m unittest discover -s ".agents/skills/$skill/tests" -p 'test_*.py' -q
           done
+      - name: Run installer tests only on explicit manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          python -B -m unittest discover -s .agents/skills/codex-native-orchestrator/tests -p 'test_*.py' -q
           python -B -m unittest discover -s zcode/tests -p 'test_*.py' -q

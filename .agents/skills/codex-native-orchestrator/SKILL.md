@@ -1,70 +1,54 @@
 ---
 name: codex-native-orchestrator
-description: Route complex repository work across native Codex agents when explicitly invoked or authorized by the current Ultra runtime mode. Never activate from task matching in ordinary or Max mode. Use the persistent runner for DAG or resumable work.
+description: Plan, implement and check scoped repository work with native Codex roles when explicitly invoked or authorized by the current Ultra runtime. Keep simple work in the host; no automatic tests or extra acceptance gates.
 ---
 
 # Codex Native Orchestration
 
 ## Activation: manual invocation or Ultra
 
-Only the primary/host agent may start this workflow. Named-role agents and other delegated children execute their assigned packets without starting another Conductor, runner, or final gate.
+Only the primary/host agent coordinates this workflow. Delegated children execute their assigned packet and never start another orchestration.
 
-A new run requires either of these entrypoints:
+A new task requires either entrypoint:
 
-- **Manual:** The user selects **Codex Native Orchestration** in the skill/slash menu (typing `/codex` filters that menu), or sends a direct `$codex-native-orchestrator` invocation with a task. Questions, quotations, screenshots, document references, and requests to inspect or edit this skill are not invocations of its orchestration workflow.
-- **Ultra:** The latest trusted runtime/developer `<multi_agent_mode>` instruction states **"Proactive multi-agent delegation is active"**, and the current repository task materially benefits from independent exploration, implementation, testing, research, or review. This is the Ultra runtime bridge; simple questions and small localized changes stay in the host session.
+- **Manual:** The user selects **Codex Native Orchestration** from the skill/slash menu or directly invokes `$codex-native-orchestrator` with a task. Typing `/codex` only filters the menu. Questions, quotations, screenshots and requests to inspect or edit this skill are not invocations.
+- **Ultra:** The latest trusted runtime/developer `<multi_agent_mode>` instruction says **"Proactive multi-agent delegation is active"**, and the repository task benefits from division of the requested work. Simple questions and localized edits remain in the host.
 
-For the Ultra entrypoint, start automatically without asking the user to select this skill or type its name. Keep the host's selected Ultra mode; only the delegated roles use the fixed efforts below.
+Ordinary/Max task matching, the word `ultra`, full access, saved model settings, available agent tools and earlier skill use do not activate this skill. A later explicit-request-only runtime instruction disables automatic activation for new tasks. Unknown mode requires manual invocation. Keep `policy.allow_implicit_invocation: false`; the [activation block](references/activation.md) loads this skill conditionally.
 
-Ordinary/Max task matching, full access, a global default effort, the word `ultra` in user or document text, available agent tools, and earlier skill use do not authorize automatic activation. A later runtime instruction returning to explicit-request-only mode revokes Ultra activation for new tasks. Unknown mode does not authorize automatic activation.
+Both entrypoints use the same workflow. Continue unfinished work from its existing plan and results; do not restart completed steps. Re-evaluate activation for independent new tasks. Do not inspect or change the host model/effort to match a role.
 
-Keep `policy.allow_implicit_invocation: false` in `agents/openai.yaml`. The lightweight [global activation instructions](references/activation.md) conditionally load this file; the skill must not be injected for ordinary task matching.
+## Execution boundary
 
-If both entrypoints apply, start one run through one execution mode. Continue an existing, unfinished run for the same authorized objective through its recorded state and entrypoint, including after leaving Ultra; do not start another Conductor. Completed/cancelled runs and earlier conversation history do not authorize an independent new task. Re-evaluate the entrypoints for every independent new task.
+Do only the user's requested work and deliver the minimum working result. Do not add compatibility layers, defensive wrappers, future abstractions, adjacent refactors, duplicate inspections or extra output files for hypothetical benefit.
 
-Use this skill for repository tasks where independent exploration, implementation, testing, research, or review materially improves the result. Keep small localized changes in the host session. The role topology below is fixed for this installation; do not substitute a model or effort for any named role.
+Do not calculate SHA-256, MD5, checksums, fingerprints or signatures, create `.sha256` files, or add integrity/evidence layers by default. Hashing is allowed only when the user explicitly requests published checksums, deduplication, cache-hit decisions, or rejection against a known digest, and the result is actually published or consumed by that requested operation. A digest without a downstream consumer is forbidden. "Just in case", professionalism and future traceability are not authorization.
 
-## Quality-first workflow
+Do not author or run tests, builds, benchmarks, A/B experiments, mutation checks or test suites unless explicitly requested by the user. Do not disguise them as checks. An orchestration invocation or Ultra mode does not request testing. Do not add subagents, full reviews or extra gates merely for reassurance.
 
-Use one independent Conductor startup through `native-begin` or `run` before detailed execution. The host owns decisions, integration and delivery. Never start both modes or a second Conductor for the same task. Update the agreed plan with newly discovered facts; do not seek repeated planning approval. Small localized work can remain in the host after startup.
+When a proposed addition exceeds the requested scope, stop that addition, ask one sentence — “我想加 X，因为 Y，是否允许？” — and wait. Do not do it first or ask about routine work already authorized.
 
-Choose bounded roles with [routing](references/routing.md). Prefer Luna / max for well-specified repetitive work: scout collects facts, mechanic follows an explicit change recipe, and check_runner executes predefined commands. Sol / max handles planning, semantic decisions, implementation, test authoring, review and finding validation. Reserve Astra / xhigh for consequential design review, difficult root-cause diagnosis and the final evidence gate. Escalate on ambiguity or unexpected failure; small edits with unclear behavior are not automatically simple. Apply the [quality workflow](references/quality-workflow.md): requirement-derived acceptance tests, independent execution and code review, evidence-based finding adjudication, and bounded repairs. Every completed authorized orchestration run ends with Reviewer then a controller-isolated Guardian. Each verdict binds one exact evidence revision. A rejected revision can be repaired and rechecked under the same objective; an unchanged revision cannot be resubmitted for a different verdict.
+## Plan → implement → check → fix or release
 
-## Fixed role topology
+1. **Plan:** Understand the goal, relevant source, constraints, dependencies and completion conditions. Decide the smallest implementation before editing. Keep one proportionate plan in the conversation; revise only facts that changed. The host plans simple work. Use one `conductor` only when the requested decomposition needs it; it is not a mandatory startup gate.
+2. **Implement:** The host or one suitable writer makes the scoped change. Delegate only actual parts of the authorized work. Share the relevant plan and paths, not the whole conversation. Order dependent edits; use parallel writers only when the requested work actually needs independent parts.
+3. **Check once:** The host or one `reviewer` compares the actual result/diff with the requirements and relevant callers. This is a focused content/code inspection, not command execution, a test phase or a full-repository audit. Choose one owner; do not repeat the same check in the host and another role. A review-only request produces findings and never authorizes edits.
+4. **Fix or release:** For an implementation request, fix concrete in-scope defects, then inspect only the repair and directly affected paths. Reuse unchanged conclusions. If the result meets the request and no concrete issue remains, deliver immediately. No automatic Guardian, fresh reviewer, test rerun, diagnostic escalation or fixed number of repair waves. If a repair needs new scope or a missing decision, explain that specific blocker.
 
-| Role | Model | Effort | Requested sandbox profile |
-| --- | --- | --- | --- |
-| `conductor` | `gpt-6.1-sol` | `max` | read-only |
-| `explorer` | `gpt-6.1-sol` | `max` | read-only |
-| `researcher` | `gpt-6.1-sol` | `max` | read-only |
-| `worker` | `gpt-6.1-sol` | `max` | workspace-write |
-| `design_critic` | `gpt-6-astra` | `xhigh` | read-only |
-| `test_author` | `gpt-6.1-sol` | `max` | workspace-write |
-| `tester` | `gpt-6.1-sol` | `max` | workspace-write |
-| `reviewer` | `gpt-6.1-sol` | `max` | read-only |
-| `finding_validator` | `gpt-6.1-sol` | `max` | read-only |
-| `debugger` | `gpt-6-astra` | `xhigh` | read-only |
-| `guardian` | `gpt-6-astra` | `xhigh` | read-only |
-| `scout` | `gpt-6-luna` | `max` | read-only |
-| `mechanic` | `gpt-6-luna` | `max` | workspace-write |
-| `check_runner` | `gpt-6-luna` | `max` | workspace-write |
+See [routing](references/routing.md) when assigning work, [delegation](references/delegation-contract.md) when forming a packet, and [checking](references/quality-workflow.md) for the completion boundary.
 
-The bundled JSON manifest is the sole model/effort authority. Controller dispatch, deployed TOMLs, schemas and role prompts must agree. Never substitute or silently fall back. The host model and effort remain whatever the user selected; do not inspect or pin them to any role. Profile sandbox fields are advisory and do not override the parent session. Effective permissions and runtime are observed separately; report unknown values as `unknown`.
+## Roles and runtime
 
-Native dispatch uses fresh named-role agents. If cached role metadata is stale, request a fresh generic agent with the exact manifest model/effort and role prompt, bounded contract and owned paths. If the exact settings cannot be requested, stop dispatch and report the limitation. Existing children retain their original settings. This fallback cannot replace the controller-isolated Guardian.
+| Roles | Model | Effort |
+| --- | --- | --- |
+| conductor, explorer, researcher, worker, reviewer, finding_validator, test_author, tester | `gpt-6.1-sol` | `max` |
+| scout, mechanic, check_runner | `gpt-6-luna` | `max` |
+| design_critic, debugger, guardian | `gpt-6-astra` | `xhigh` |
 
-## Execution and recovery
+The JSON manifest defines the named role models and efforts. Preserve them; do not silently substitute. Use native agent tools directly. `test_author`, `tester`, `check_runner`, `guardian`, `design_critic` and `finding_validator` are explicit-request-only specialist roles, not a pipeline. Their presence does not require using them. A missing test report, digest or Guardian verdict is not a reason to block normal completion.
 
-Use native orchestration for bounded work. Use the persistent runner for explicit DAG/batch/resume/persistence, three or more dependent nodes, two or more independent parallel writers, or cross-turn recovery. File count alone is not a trigger. Honor `runner on`, `runner off`, `root-only`, `max agents N`, and `read-only`; at most four ordinary agents run concurrently. `root-only` does not waive startup, review or final gate.
+Default to one writer and at most four children, only as needed. Honor `root-only`, `max agents N` and `read-only`; `root-only` uses the host for planning, implementation and inspection. Children cannot delegate. Sandbox metadata describes the requested profile, not stronger permissions than the active session grants.
 
-Default to one implementation writer, with a separate test-author checkout. Shared contracts, schemas and state must be ordered; disjoint path names alone do not prove independence. Runner writers own non-overlapping paths and never stage/commit: the controller verifies and commits. Tester and check_runner nodes integrate no files; generated outputs run in disposable private clones with tracked-source and Git checks. A global `read-only` request disables writable verification too.
+If named-role metadata is stale, use a fresh generic child with the exact manifest model/effort and current role prompt when the runtime supports that. If it cannot, report the dispatch limitation without choosing a different model.
 
-Run the controller from this skill directory:
-
-```sh
-python3 scripts/codex_native_orchestrator.py --repo /absolute/repository doctor
-```
-
-Follow [delegation contracts](references/delegation-contract.md), [runner/recovery](references/runner-and-recovery.md), [evidence](references/evidence-and-review.md) and [version-bound gates](references/guardian-gate.md). Runs remain under `CODEX_HOME/astra-orchestrator/runs`; state records package version, manifest plus prompt/controller fingerprint, baseline and evidence revision. Older runs remain inspectable and cannot silently resume under changed rules. Use the preserved old package to recover old work or explicitly start a newly planned run; never rewrite old hashes to make it pass.
-
-Two candidate implementations are an opt-in experiment in separate native checkouts: compare the same requirements and tests, select one, and integrate only that candidate. The ordinary DAG must reject candidate fields because its writers are additive. Do not enable this by default without the [evaluation protocol](references/evaluation.md).
+Version 4 removes the old persistent CLI controller, mandatory test/evidence schemas and final-gate machinery. Do not run `native-begin`, `native-gate`, `run` or `revise-run` from an older package as a hidden prerequisite. Existing historical run files are left alone; resume the requested work using its useful plan and results in the current chat. Do not create replacement ledgers, compatibility layers or migration receipts. Save progress to a file only if the user requests it.

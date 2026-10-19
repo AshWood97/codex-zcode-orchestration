@@ -1,5 +1,5 @@
 {
-  "package_version": "3.3.0",
+  "package_version": "4.0.0",
   "custom_roles": [
     "code-reviewer",
     "debugger",
@@ -19,6 +19,20 @@
     "model_id": "set using your ZCode provider-id/model-id"
   },
   "max_concurrency": 4,
-  "same_issue_debugger_after": 2,
-  "max_repair_waves": 5
+  "workflow": [
+    "plan",
+    "implement",
+    "inspect",
+    "repair_if_needed",
+    "deliver"
+  ],
+  "explicit_request_only": [
+    "test-author",
+    "test-verifier",
+    "design-critic",
+    "finding-validator"
+  ],
+  "inspection_owner": "host_or_code-reviewer",
+  "automatic_tests": false,
+  "automatic_hashes": false
 }

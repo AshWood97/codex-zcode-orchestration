@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import stat
 import tempfile
-import uuid
 
 PACKAGE = Path(__file__).resolve().parents[1]
 START = b'<!-- codex-zcode-orchestration:quality:start -->'
@@ -18,9 +16,6 @@ END = b'<!-- codex-zcode-orchestration:quality:end -->'
 ROLES = ('code-reviewer', 'test-verifier', 'design-critic', 'test-author',
          'finding-validator', 'debugger', 'docs-researcher')
 
-
-def digest(data):
-    return hashlib.sha256(data).hexdigest() if data is not None else None
 
 
 def merge_guidance(original, template):
@@ -90,15 +85,6 @@ def configure(home, model, *, apply=False, replace_existing=False):
         return report
     if conflicts:
         raise ValueError('Existing role content differs; inspect dry-run and use --replace-existing only to replace it')
-    backup = home / 'backups' / 'codex-zcode-orchestration' / uuid.uuid4().hex
-    backup.mkdir(parents=True, mode=0o700)
-    records = []
-    for index, (path, original, data, mode) in enumerate(changes):
-        if original is not None:
-            atomic_write(backup / str(index), original)
-        records.append({'path': str(path), 'backup': str(index) if original is not None else None,
-                        'before_hash': digest(original), 'after_hash': digest(data), 'mode': mode})
-    atomic_write(backup / 'manifest.json', (json.dumps(records, indent=2) + '\n').encode())
     applied = []
     try:
         for path, original, data, mode in changes:
@@ -116,7 +102,6 @@ def configure(home, model, *, apply=False, replace_existing=False):
             else:
                 atomic_write(path, original, mode)
         raise
-    report['backup'] = str(backup)
     return report
 
 
