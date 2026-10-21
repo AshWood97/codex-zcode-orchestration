@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.2.0 — 2026-10-21
+
+- Rename the repository to **Harness Orchestration / 多 Harness 角色编排** (`AshWood97/harness-orchestration`) for Codex, ZCode, Qoder, and future harness adapters. Preserve existing Codex skill identifiers, paths, ZCode files, and activation markers.
+- Add Qoder desktop plugin **harness-orchestration 1.0.0** with all 14 adapted roles and one manually activated skill. Omit role model fields to follow the current Qoder conversation model; provide read-only tool sets without Bash/Edit/Write.
+- Add reusable custom-coordinator instructions and bilingual ZIP import, packaging, role, and permission documentation. Keep one writer, at most four children by default, one checking owner, no nested delegation, minimal targeted checks, and the explicit-request boundary for digests.
+- Keep the Qoder package credential-free, without hooks, MCP servers, or a new test framework. Declare individual agent Markdown paths for desktop importer compatibility.
+
 ## 4.1.0 — 2026-10-19
 
 - Let Conductor assess multi-role tasks and select any needed roles; the host dispatches the plan. ZCode's host performs the same planning role. Individual specialists no longer require the user to name them.

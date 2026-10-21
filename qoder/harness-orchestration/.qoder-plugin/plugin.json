@@ -1,0 +1,33 @@
+{
+  "name": "harness-orchestration",
+  "displayName": "Harness Orchestration / 多 Harness 角色编排",
+  "version": "1.0.0",
+  "description": "Plan, implement and inspect scoped Qoder work with 14 optional roles. / 以 14 个可选角色完成 Qoder 任务的计划、实现和检查。",
+  "author": {
+    "name": "AshWood97"
+  },
+  "homepage": "https://github.com/AshWood97/harness-orchestration",
+  "repository": "https://github.com/AshWood97/harness-orchestration",
+  "keywords": [
+    "qoder-plugin",
+    "orchestration",
+    "agents"
+  ],
+  "skills": "./skills/",
+  "agents": [
+    "./agents/check-runner.md",
+    "./agents/conductor.md",
+    "./agents/debugger.md",
+    "./agents/design-critic.md",
+    "./agents/explorer.md",
+    "./agents/finding-validator.md",
+    "./agents/guardian.md",
+    "./agents/mechanic.md",
+    "./agents/researcher.md",
+    "./agents/reviewer.md",
+    "./agents/scout.md",
+    "./agents/test-author.md",
+    "./agents/tester.md",
+    "./agents/worker.md"
+  ]
+}

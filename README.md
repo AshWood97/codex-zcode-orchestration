@@ -1,14 +1,14 @@
-# Codex + ZCode Orchestration / Codex 与 ZCode 多角色编排
+# Harness Orchestration / 多 Harness 角色编排
 
-Plan → implement → inspect → fix or deliver · Native agents · External providers · Harness delegation
+Plan → implement → inspect → fix or deliver · Codex · ZCode · Qoder
 
-Codex 与 ZCode：计划 → 执行 → 检查 → 有问题修改、没问题放行 · 原生 agent · 外部 provider · 独立 harness
+计划 → 执行 → 检查 → 有问题修改、没问题放行 · Codex · ZCode · Qoder
 
 [中文](#中文) · [English](#english)
 
 ## 中文
 
-这个仓库提供三个**独立安装、独立选择**的 Codex skill，以及一套 [ZCode 角色编排包](zcode/README.md)。仓库由 `codex-three-paths` 更名而来，原有三个技能标识和安装路径保持不变。安装全部三个后，技能菜单仍显示三个选项；使用时直接选所需的那个，不会再出现“总入口”或第二次模式选择。
+这个仓库提供三个**独立安装、独立选择**的 Codex skill、一套 [ZCode 角色编排包](zcode/README.md)，以及包含 14 个角色和手动 skill 的 [Qoder 插件](qoder/README.md)。仓库现名为 [AshWood97/harness-orchestration](https://github.com/AshWood97/harness-orchestration)，曾用名为 `codex-three-paths`、`codex-zcode-orchestration`，便于后续继续接入其他 Harness；现有 Codex skill 标识、安装路径和 ZCode 入口保持不变。安装三个 Codex skill 后，技能菜单仍显示三个选项，按任务选择即可。
 
 | Skill | 用途 |
 | --- | --- |
@@ -23,7 +23,7 @@ Codex 与 ZCode：计划 → 执行 → 检查 → 有问题修改、没问题�
 在 Codex 中使用内置 `$skill-installer`，请它从本仓库一次安装下面三个路径：
 
 ```text
-仓库：AshWood97/codex-zcode-orchestration
+仓库：AshWood97/harness-orchestration
 路径：.agents/skills/codex-native-orchestrator
       .agents/skills/codex-external-provider
       .agents/skills/codex-harness-bridge
@@ -73,15 +73,21 @@ python /absolute/path/to/CODEX_HOME/skills/codex-native-orchestrator/scripts/ins
 
 安装器合并带标记的工作流并保留个人规则，不计算前后 hash 或生成备份凭据。模型的 provider 标识由使用者提供；内置角色仍在 ZCode 设置中配置。文档插件角色不属于本次代码编排。
 
+### Qoder 角色编排
+
+[Qoder 安装说明](qoder/README.md)提供 `harness-orchestration` 桌面插件：完整 14 个角色和一个手动启用的 skill。角色省略 `model` 以沿用当前对话模型，只读角色没有 Bash/Edit/Write，保留默认一个写入者、最多四个子角色、一个检查负责人和按需最小检查的规则。
+
+在 Qoder CN 中通过 **Extensions → Plugins → Add Plugin → 上传 Plugin** 导入 ZIP；ZIP 根目录须直接包含 `.qoder-plugin/plugin.json`。创建 **Harness Orchestration** 自定义协调 Agent、选择本插件，并粘贴 [协调指令](qoder/coordinator-instructions.txt)。显式选择该协调 Agent、同名 skill 或明确要求使用编排即可启用。14 角色是可选目录，Team 最多 5 个成员；按任务选用角色。打包命令及中英文完整步骤见 [Qoder README](qoder/README.md)。
+
 ### 公开仓库与验证范围
 
 本仓库只包含源码、文档、占位符示例和测试。不要提交 API key、真实 provider URL、个人 `config.toml`、私有模型目录、任务 brief、运行日志或报告。External 的预检需要可信的运行时 provider/model 身份；配置检查本身不证明远端请求的实际路由。Harness Bridge 的适配器测试使用模拟 CLI，不代表所有真实 CLI 版本或服务端都已验证。DeepSeek Harness 仍是实验性支持。
 
-Native/ZCode 的日常任务和仓库改动不再自动触发测试矩阵。现有安装器测试保留供维护者明确选择执行；External Provider 与 Harness Bridge 的原有 CI 仅在它们自身路径发生变化时运行。见[变更记录](CHANGELOG.md)。
+Native/ZCode/Qoder 的日常任务和仓库改动不自动触发测试矩阵。现有安装器测试保留供维护者明确选择执行；External Provider 与 Harness Bridge 的原有 CI 仅在它们自身路径发生变化时运行。见[变更记录](CHANGELOG.md)。
 
 ## English
 
-This repository contains three Codex skills that are **installed and selected independently**, plus a [ZCode role orchestration package](zcode/README.md). The repository was renamed from `codex-three-paths`; existing skill identifiers and installation paths are unchanged. Installing all three adds three entries to the skill picker. Select the skill you need once for the task; there is no umbrella skill or second mode picker.
+This repository contains three Codex skills that are **installed and selected independently**, a [ZCode role orchestration package](zcode/README.md), and a [Qoder plugin](qoder/README.md) with 14 roles and a manual skill. The repository is now [AshWood97/harness-orchestration](https://github.com/AshWood97/harness-orchestration), previously `codex-three-paths` and `codex-zcode-orchestration`, leaving room for future harness adapters. Existing Codex skill identifiers, installation paths, and ZCode entrypoints are preserved. Installing the three Codex skills adds three entries to the picker; select the one needed for the task.
 
 | Skill | Purpose |
 | --- | --- |
@@ -96,7 +102,7 @@ The skills can participate in one workflow, but they do not automatically mix mo
 In Codex, ask the built-in `$skill-installer` to install these three paths from this repository:
 
 ```text
-Repository: AshWood97/codex-zcode-orchestration
+Repository: AshWood97/harness-orchestration
 Paths: .agents/skills/codex-native-orchestrator
        .agents/skills/codex-external-provider
        .agents/skills/codex-harness-bridge
@@ -140,11 +146,17 @@ The [ZCode package](zcode/README.md) retains seven custom roles plus built-in Ex
 
 The installer merges marked guidance, preserves surrounding personal rules and creates no digest or backup receipt. Supply your own provider/model identifier; set built-in role models in ZCode settings. Document-plugin roles are outside this coding workflow.
 
+### Qoder role orchestration
+
+The [Qoder package](qoder/README.md) ships a desktop plugin named `harness-orchestration`, with all 14 roles and one manually activated skill. Agent `model` fields are omitted to follow the conversation model. Read-only roles have no Bash/Edit/Write tools. The workflow defaults to one writer, at most four children, one checking owner, and minimal checks for concrete unresolved questions.
+
+Import the ZIP in Qoder CN through **Extensions → Plugins → Add Plugin → Upload Plugin**. The ZIP root must directly contain `.qoder-plugin/plugin.json`. Create a custom coordinator named **Harness Orchestration**, select this plugin, and paste the [coordinator instructions](qoder/coordinator-instructions.txt). Select that coordinator, select the skill, or explicitly ask to use orchestration to activate it. Choose necessary roles from the 14-role catalog; Team supports up to five members. See the [bilingual installation and packaging guide](qoder/README.md).
+
 ### Public repository and verification limits
 
 This repository contains only source code, documentation, placeholder examples, and tests. Do not commit API keys, real provider URLs, personal `config.toml`, private model catalogs, task briefs, run logs, or reports. External preflight requires trusted runtime provider/model identity; a configuration check alone does not prove remote request routing. Harness Bridge adapter tests use stub CLIs and do not establish compatibility with every live CLI version or service. DeepSeek Harness support remains experimental.
 
-Native/ZCode tasks and repository changes do not automatically trigger test matrices. Existing installer tests remain available for an explicitly chosen maintenance run. External Provider and Harness Bridge retain CI only for changes to their own paths. See the [changelog](CHANGELOG.md).
+Native/ZCode/Qoder tasks and repository changes do not automatically trigger test matrices. Existing installer tests remain available for an explicitly chosen maintenance run. External Provider and Harness Bridge retain CI only for changes to their own paths. See the [changelog](CHANGELOG.md).
 
 ## License
 
