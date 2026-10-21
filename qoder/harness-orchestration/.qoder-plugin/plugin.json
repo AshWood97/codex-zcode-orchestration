@@ -1,8 +1,8 @@
 {
   "name": "harness-orchestration",
   "displayName": "Harness Orchestration / 多 Harness 角色编排",
-  "version": "1.0.0",
-  "description": "Plan, implement and inspect scoped Qoder work with 14 optional roles. / 以 14 个可选角色完成 Qoder 任务的计划、实现和检查。",
+  "version": "1.1.0",
+  "description": "Automatically coordinate complex Qoder engineering tasks when dividing work is useful; keep simple tasks in the host. / 复杂工程任务按需自动编排，简单任务由主 Agent 完成。",
   "author": {
     "name": "AshWood97"
   },
@@ -29,5 +29,6 @@
     "./agents/test-author.md",
     "./agents/tester.md",
     "./agents/worker.md"
-  ]
+  ],
+  "hooks": "./hooks/hooks.json"
 }

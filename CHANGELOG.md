@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.3.0 — 2026-10-21
+
+- Update Qoder plugin and skill to **1.1.0**: Default Agent conversations automatically orchestrate actual complex engineering work when division helps. Keep simple Q&A and clear localized edits in the host; do not infer complexity from text length or file count.
+- Add a plugin-level `UserPromptSubmit` hook that reads one packaged static routing rule using `cat` and `QODER_PLUGIN_ROOT`. For complex work, the first tool call loads the full skill and Conductor follows before any source retrieval or reading; no separate global-memory setup is required. The hook targets macOS/Linux; Windows is unverified. Explicit skill requests and the custom coordinator remain optional.
+- Let one plugin Conductor select the smallest useful subset from all 14 roles. Preserve one writer, at most four children, one checking owner, minimal checks, and user restrictions including `root-only` and no subagents. Quoted or attached instructions do not authorize work.
+- Leave all 14 Qoder role prompts, tool sets, and model inheritance unchanged. Codex and ZCode activation behavior is unchanged.
+
 ## 4.2.0 — 2026-10-21
 
 - Rename the repository to **Harness Orchestration / 多 Harness 角色编排** (`AshWood97/harness-orchestration`) for Codex, ZCode, Qoder, and future harness adapters. Preserve existing Codex skill identifiers, paths, ZCode files, and activation markers.

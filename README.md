@@ -8,7 +8,7 @@ Plan → implement → inspect → fix or deliver · Codex · ZCode · Qoder
 
 ## 中文
 
-这个仓库提供三个**独立安装、独立选择**的 Codex skill、一套 [ZCode 角色编排包](zcode/README.md)，以及包含 14 个角色和手动 skill 的 [Qoder 插件](qoder/README.md)。仓库现名为 [AshWood97/harness-orchestration](https://github.com/AshWood97/harness-orchestration)，曾用名为 `codex-three-paths`、`codex-zcode-orchestration`，便于后续继续接入其他 Harness；现有 Codex skill 标识、安装路径和 ZCode 入口保持不变。安装三个 Codex skill 后，技能菜单仍显示三个选项，按任务选择即可。
+这个仓库提供三个**独立安装、独立选择**的 Codex skill、一套 [ZCode 角色编排包](zcode/README.md)，以及包含 14 个角色和按需自动编排 skill 的 [Qoder 插件](qoder/README.md)。仓库现名为 [AshWood97/harness-orchestration](https://github.com/AshWood97/harness-orchestration)，曾用名为 `codex-three-paths`、`codex-zcode-orchestration`，便于后续继续接入其他 Harness；现有 Codex skill 标识、安装路径和 ZCode 入口保持不变。安装三个 Codex skill 后，技能菜单仍显示三个选项，按任务选择即可。
 
 | Skill | 用途 |
 | --- | --- |
@@ -75,9 +75,9 @@ python /absolute/path/to/CODEX_HOME/skills/codex-native-orchestrator/scripts/ins
 
 ### Qoder 角色编排
 
-[Qoder 安装说明](qoder/README.md)提供 `harness-orchestration` 桌面插件：完整 14 个角色和一个手动启用的 skill。角色省略 `model` 以沿用当前对话模型，只读角色没有 Bash/Edit/Write，保留默认一个写入者、最多四个子角色、一个检查负责人和按需最小检查的规则。
+[Qoder 安装说明](qoder/README.md)提供 `harness-orchestration` 1.1.0 桌面插件：完整 14 个角色和一个对适合分工的复杂工程任务自动匹配的 skill。角色省略 `model` 以沿用当前对话模型，只读角色没有 Bash/Edit/Write，保留默认一个写入者、最多四个子角色、一个检查负责人和按需最小检查的规则。
 
-在 Qoder CN 中通过 **Extensions → Plugins → Add Plugin → 上传 Plugin** 导入 ZIP；ZIP 根目录须直接包含 `.qoder-plugin/plugin.json`。创建 **Harness Orchestration** 自定义协调 Agent、选择本插件，并粘贴 [协调指令](qoder/coordinator-instructions.txt)。显式选择该协调 Agent、同名 skill 或明确要求使用编排即可启用。14 角色是可选目录，Team 最多 5 个成员；按任务选用角色。打包命令及中英文完整步骤见 [Qoder README](qoder/README.md)。
+在 Qoder CN 中通过 **Extensions → Plugins → Add Plugin → 上传 Plugin** 导入 ZIP；ZIP 根目录须直接包含 `.qoder-plugin/plugin.json`。为 **Default Agent** 启用本插件后，`UserPromptSubmit` hook 将[默认规则](qoder/harness-orchestration/hooks/default-agent-instructions.txt)加入任务上下文。规则要求先依据当前请求判断；适合分工的复杂工程任务首个工具调用加载完整 skill，随后由插件 Conductor 选角色，在此之前不检索或读取源码；简单任务、`root-only` 和禁止子 Agent 的任务由主 Agent 完成，无需手选入口或另配全局记忆。hook 当前仅用 `cat` 读取插件内静态文本，面向 macOS/Linux，Windows 未验证；实际自动入口检查状态见安装说明。[自定义协调器](qoder/coordinator-instructions.txt) 保留为可选方式。14 角色是可选目录，Team 最多 5 个成员；打包命令及中英文完整步骤见 [Qoder README](qoder/README.md)。
 
 ### 公开仓库与验证范围
 
@@ -87,7 +87,7 @@ Native/ZCode/Qoder 的日常任务和仓库改动不自动触发测试矩阵。�
 
 ## English
 
-This repository contains three Codex skills that are **installed and selected independently**, a [ZCode role orchestration package](zcode/README.md), and a [Qoder plugin](qoder/README.md) with 14 roles and a manual skill. The repository is now [AshWood97/harness-orchestration](https://github.com/AshWood97/harness-orchestration), previously `codex-three-paths` and `codex-zcode-orchestration`, leaving room for future harness adapters. Existing Codex skill identifiers, installation paths, and ZCode entrypoints are preserved. Installing the three Codex skills adds three entries to the picker; select the one needed for the task.
+This repository contains three Codex skills that are **installed and selected independently**, a [ZCode role orchestration package](zcode/README.md), and a [Qoder plugin](qoder/README.md) with 14 roles and a skill for automatic orchestration when useful. The repository is now [AshWood97/harness-orchestration](https://github.com/AshWood97/harness-orchestration), previously `codex-three-paths` and `codex-zcode-orchestration`, leaving room for future harness adapters. Existing Codex skill identifiers, installation paths, and ZCode entrypoints are preserved. Installing the three Codex skills adds three entries to the picker; select the one needed for the task.
 
 | Skill | Purpose |
 | --- | --- |
@@ -148,9 +148,9 @@ The installer merges marked guidance, preserves surrounding personal rules and c
 
 ### Qoder role orchestration
 
-The [Qoder package](qoder/README.md) ships a desktop plugin named `harness-orchestration`, with all 14 roles and one manually activated skill. Agent `model` fields are omitted to follow the conversation model. Read-only roles have no Bash/Edit/Write tools. The workflow defaults to one writer, at most four children, one checking owner, and minimal checks for concrete unresolved questions.
+The [Qoder package](qoder/README.md) ships a desktop plugin named `harness-orchestration`, at version 1.1.0, with all 14 roles and a skill that automatically matches complex engineering work benefiting from division. Agent `model` fields are omitted to follow the conversation model. Read-only roles have no Bash/Edit/Write tools. The workflow defaults to one writer, at most four children, one checking owner, and minimal checks for concrete unresolved questions.
 
-Import the ZIP in Qoder CN through **Extensions → Plugins → Add Plugin → Upload Plugin**. The ZIP root must directly contain `.qoder-plugin/plugin.json`. Create a custom coordinator named **Harness Orchestration**, select this plugin, and paste the [coordinator instructions](qoder/coordinator-instructions.txt). Select that coordinator, select the skill, or explicitly ask to use orchestration to activate it. Choose necessary roles from the 14-role catalog; Team supports up to five members. See the [bilingual installation and packaging guide](qoder/README.md).
+Import the ZIP in Qoder CN through **Extensions → Plugins → Add Plugin → Upload Plugin**. The ZIP root must directly contain `.qoder-plugin/plugin.json`. Enable the plugin for **Default Agent**; its `UserPromptSubmit` hook adds the [default rule](qoder/harness-orchestration/hooks/default-agent-instructions.txt) to task context. The rule decides from the current request: when division helps, the first tool call loads the full skill, followed by the plugin Conductor selecting roles before any source retrieval or reading; simple tasks, `root-only`, and no-subagent requests stay in the host without a manual picker or separate global-memory setup. The hook uses only `cat` to read packaged static text and targets macOS/Linux; Windows is unverified. See the installation guide for automatic-entry check status. The [custom coordinator](qoder/coordinator-instructions.txt) remains optional. Choose necessary roles from the 14-role catalog; Team supports up to five members. See the [bilingual installation and packaging guide](qoder/README.md).
 
 ### Public repository and verification limits
 
